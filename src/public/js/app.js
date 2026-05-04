@@ -1,0 +1,1465 @@
+// ============================================
+// POS MÓVIL - Lógica de la aplicación
+// ============================================
+// Cargar database module primero
+// (se define como global en database.js)
+
+// Configuración
+let dbInicializado = false;
+let modoOffline = false;
+let serverUrlCacheado = null;
+let ultimoToggleCarritoTs = 0;
+
+const DECIMALES = 3;
+const FACTOR_DECIMALES = 10 ** DECIMALES;
+const PASO_CANTIDAD = 1;
+const KEY_ULTIMA_SYNC = "posmovil_ultima_sync";
+let ultimaSyncISO = localStorage.getItem(KEY_ULTIMA_SYNC) || null;
+
+function redondear3(valor) {
+  return Math.round((Number(valor) || 0) * FACTOR_DECIMALES) / FACTOR_DECIMALES;
+}
+
+function parsearNumero(valor) {
+  if (valor === null || valor === undefined) return 0;
+  var normalizado = String(valor).replace(",", ".").trim();
+  var num = parseFloat(normalizado);
+  return Number.isFinite(num) ? redondear3(num) : 0;
+}
+
+function formatearNumero(valor) {
+  var n = redondear3(valor);
+  var texto = n.toFixed(3).replace(/\.?0+$/, "");
+  return texto === "" || texto === "-" ? "0" : texto;
+}
+
+function formatearMoneda(valor) {
+  return "$" + formatearNumero(valor);
+}
+
+function guardarUltimaSync(fecha = new Date()) {
+  ultimaSyncISO = fecha.toISOString();
+  localStorage.setItem(KEY_ULTIMA_SYNC, ultimaSyncISO);
+}
+
+// ============================================
+// OBTENER URL DEL SERVIDOR
+// Usa localhost si estamos en browser, auto-descubre si estamos en APK
+// También prueba rango 10.x.x.x para tethering
+// ============================================
+function obtenerUrlServidor() {
+  // Si ya tenemos URL cacheada, usarla
+  if (serverUrlCacheado) {
+    console.log("📡 [obtenerUrlServidor] Usando cache:", serverUrlCacheado);
+    return serverUrlCacheado;
+  }
+  
+  // En browser, usar window.location.origin
+  if (!window.Capacitor || !window.Capacitor.isNativePlatform()) {
+    var url = window.location.origin;
+    console.log("📡 [obtenerUrlServidor] Navegador:", url);
+    return url;
+  }
+  
+  // En APK: probar la URL manual o auto-descubrir
+  if (window.SERVER_URL) {
+    serverUrlCacheado = window.SERVER_URL;
+    console.log("📡 [obtenerUrlServidor] URL manual:", serverUrlCacheado);
+    return serverUrlCacheado;
+  }
+  
+  // Debug: mostrar información de Capacitor
+  console.log("📡 [obtenerUrlServidor] Capacitor:", JSON.stringify(window.Capacitor));
+  console.log("📡 [obtenerUrlServidor] isNativePlatform:", window.Capacitor?.isNativePlatform?.());
+  console.log("📡 [obtenerUrlServidor] SERVER_URL:", window.SERVER_URL);
+
+// Fallback: localhost
+  console.log("📡 [obtenerUrlServidor] Usando fallback localhost");
+  return "http://localhost:3000";
+}
+
+// Referencias al database module
+const DB = window.Database || {};
+
+// Estado de la aplicación
+let productos = [];
+let carrito = [];
+
+// Elementos del DOM
+const productosContainer = document.getElementById("productosContainer");
+const carritoLista = document.getElementById("carritoLista");
+const totalItems = document.getElementById("totalItems");
+const totalPrecio = document.getElementById("totalPrecio");
+const totalPagarSpan = document.getElementById("totalPagar");
+const efectivoInput = document.getElementById("efectivo");
+const transferenciaInput = document.getElementById("transferencia");
+const btnPagar = document.getElementById("btnPagar");
+const mensajeDiv = document.getElementById("mensaje");
+const searchInput = document.getElementById("searchInput");
+const searchClear = document.getElementById("searchClear");
+const modalVuelto = document.getElementById("modalVuelto");
+const modalVueltoMensaje = document.getElementById("modalVueltoMensaje");
+const modalTotal = document.getElementById("modalTotal");
+const modalPagado = document.getElementById("modalPagado");
+const modalVueltoMonto = document.getElementById("modalVueltoMonto");
+const modalCancelar = document.getElementById("modalCancelar");
+const modalConfirmar = document.getElementById("modalConfirmar");
+const estadoModoEl = document.getElementById("estadoModo");
+const estadoPendientesEl = document.getElementById("estadoPendientes");
+const estadoUltimaSyncEl = document.getElementById("estadoUltimaSync");
+
+async function actualizarPanelEstado() {
+  if (estadoModoEl) {
+    var storage = DB.getStorageMode ? DB.getStorageMode() : "-";
+    var modoTexto = modoOffline ? "Offline" : "Online";
+    estadoModoEl.textContent = modoTexto + " (" + storage + ")";
+  }
+
+  if (estadoPendientesEl && DB.contarVentasPendientes) {
+    try {
+      var pendientes = await DB.contarVentasPendientes();
+      estadoPendientesEl.textContent = String(pendientes);
+    } catch (_) {
+      estadoPendientesEl.textContent = "-";
+    }
+  }
+
+  if (estadoUltimaSyncEl) {
+    if (!ultimaSyncISO) {
+      estadoUltimaSyncEl.textContent = "Nunca";
+    } else {
+      var fecha = new Date(ultimaSyncISO);
+      if (Number.isNaN(fecha.getTime())) {
+        estadoUltimaSyncEl.textContent = "Nunca";
+      } else {
+        estadoUltimaSyncEl.textContent = fecha.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+    }
+  }
+}
+
+// ============================================
+// VARIABLES DEL MODAL
+// ============================================
+let resolverModal = null;
+
+// ============================================
+// FUNCIÓN PARA MOSTRAR MODAL DE VUELTO
+// ============================================
+function mostrarModalVuelto(total, pagado, vuelto) {
+  if (!modalVuelto) {
+    return Promise.resolve(
+      confirm(
+        `Vuelto a entregar: ${formatearMoneda(vuelto)}. Confirmas que entregaste el vuelto?`,
+      ),
+    );
+  }
+
+  return new Promise((resolve) => {
+    resolverModal = resolve;
+    modalVueltoMensaje.textContent =
+      "Verifica el monto y confirma la entrega del vuelto.";
+    modalTotal.textContent = formatearMoneda(total);
+    modalPagado.textContent = formatearMoneda(pagado);
+    modalVueltoMonto.textContent = formatearMoneda(vuelto);
+    modalVuelto.classList.remove("hidden");
+    modalConfirmar.focus();
+  });
+}
+
+function cerrarModalVuelto(confirmado) {
+  if (!modalVuelto || resolverModal === null) return;
+  const resolver = resolverModal;
+  resolverModal = null;
+  modalVuelto.classList.add("hidden");
+  resolver(confirmado);
+}
+
+// ============================================
+// CARGAR PRODUCTOS
+// ============================================
+async function cargarProductos() {
+  console.log("📡 Cargando productos...");
+  mostrarMensaje("Cargando...", "info");
+  
+  var serverUrl = obtenerUrlServidor();
+  var fetchUrl = serverUrl + "/api/productos";
+  
+  console.log("📡 URL:", fetchUrl);
+
+  var timeoutId = setTimeout(function() { 
+    console.log("⏱️ Timeout");
+  }, 8000);
+
+try {
+    console.log("📡 Usando fetch nativo...");
+    var controller = new AbortController();
+    timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+    
+    var response = await fetch(fetchUrl, {
+      method: "GET",
+      headers: { "x-session-token": window.SESSION_TOKEN || "" },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    console.log("📡 Status:", response.status);
+    
+    if (response.ok) {
+      modoOffline = false;
+      var data = await response.json();
+      productos = Array.isArray(data) ? data : (data.productos || []);
+
+      if (productos.length > 0) {
+        // Guardar en SQLite para uso offline
+        if (dbInicializado && DB.syncProductosLocal) {
+          await DB.syncProductosLocal(productos);
+        }
+        
+        renderizarProductos(productos);
+        mostrarMensaje(productos.length + " productos", "exito", 2000);
+        console.log("✅ " + productos.length + " productos");
+      } else {
+        productosContainer.innerHTML = '<p class="info">Sin productos</p>';
+        mostrarMensaje("Sin productos", "warning");
+      }
+
+      await actualizarPanelEstado();
+    } else {
+      throw new Error("HTTP " + response.status);
+    }
+} catch(e) {
+    clearTimeout(timeoutId);
+    var errorMsg = "Error: " + e.message;
+    
+    if (e.name === "AbortError") {
+      errorMsg = "⚠️ Timeout (8s) - no responde";
+    } else if (e.message && e.message.includes("Failed to fetch")) {
+      errorMsg = "⚠️ Failed to fetch - Android bloquea HTTP?";
+    }
+    
+    console.log("❌ " + errorMsg);
+    
+    // Intentar cargar desde SQLite si falla el servidor
+    if (dbInicializado && DB.getProductosLocal) {
+      var productosLocales = await DB.getProductosLocal();
+      if (productosLocales.length > 0) {
+        modoOffline = true;
+        productos = productosLocales;
+        renderizarProductos(productos);
+        mostrarMensaje("📦 Modo offline: " + productosLocales.length + " productos", "info", 3000);
+        console.log("📦 Cargados " + productosLocales.length + " productos desde SQLite");
+        await actualizarPanelEstado();
+        return;
+      }
+    }
+    
+    mostrarMensaje("Sin conexion", "warning");
+    productosContainer.innerHTML = '<p class="info">Sin conexion.<br>Activa el servidor.</p>';
+    await actualizarPanelEstado();
+  }
+}
+
+// ============================================
+// 2. RENDERIZAR PRODUCTOS
+// ============================================
+// ============================================
+// 2. RENDERIZAR PRODUCTOS (CON BOTÓN -)
+// ============================================
+function renderizarProductos(lista) {
+  if (!lista || lista.length === 0) {
+    productosContainer.innerHTML =
+      '<p class="info">No hay productos disponibles</p>';
+    return;
+  }
+
+  console.log("🎨 Renderizando productos:", lista.length);
+
+  let html = "";
+
+  for (let i = 0; i < lista.length; i++) {
+    const producto = lista[i];
+
+    const codigo = producto.codigo || "";
+    const nombre = producto.producto || producto.nombre || "Producto";
+    const precio = parsearNumero(producto.precio || 0);
+    const stock = parsearNumero(producto.disponibilidad || producto.stock || 0);
+    const sinStock = stock <= 0;
+
+    // Verificar si el producto está en el carrito
+    const itemEnCarrito = carrito.find((item) => item.codigo === codigo);
+    const cantidadEnCarrito = itemEnCarrito ? itemEnCarrito.cantidad : 0;
+
+    const codigoEscapado = codigo.replace(/"/g, "&quot;");
+
+    html += '<div class="producto-card" data-codigo="' + codigo + '">';
+    html += '<div class="producto-info">';
+    html += "<h3>" + nombre + "</h3>";
+    html += '<div class="precio">' + formatearMoneda(precio) + "</div>";
+    html +=
+      '<div class="stock">Stock: ' +
+      formatearNumero(stock) +
+      (sinStock ? " (Sin stock)" : "") +
+      "</div>";
+    html += "</div>";
+
+    html += '<div class="producto-actions">';
+
+    // En la parte de los botones, debe quedar así:
+
+    // Botón DISMINUIR (-)
+    if (cantidadEnCarrito > 0) {
+      html +=
+        '<button class="btn-cantidad btn-disminuir" onclick="disminuirCantidad(\'' +
+        codigoEscapado +
+        "')\">−</button>";
+    } else {
+      html += '<div style="width: 48px; height: 48px;"></div>';
+    }
+
+    // Contador
+    html +=
+      '<span class="cantidad-seleccionada" id="cant-' +
+      codigo +
+      '" onclick="editarCantidad(\'' +
+      codigoEscapado +
+      '\', this)" title="Editar cantidad">' +
+      formatearNumero(cantidadEnCarrito) +
+      "</span>";
+
+    // Botón AUMENTAR (+)
+    const puedeSumar = stock > 0 && redondear3(cantidadEnCarrito + PASO_CANTIDAD) <= redondear3(stock);
+    html +=
+      '<button class="btn-cantidad" ' +
+      (puedeSumar ? "" : "disabled ") +
+      'onclick="agregarAlCarrito(\'' +
+      codigoEscapado +
+      "')\">+</button>";
+
+    html += "</div>"; // Cierra producto-actions
+    html += "</div>"; // Cierra producto-card
+  }
+
+  productosContainer.innerHTML = html;
+  console.log("✅ Productos renderizados con botones -");
+}
+
+// ============================================
+// 3. AGREGAR AL CARRITO
+// ============================================
+window.agregarAlCarrito = (codigo) => {
+  console.log("➕ Agregando producto con código:", codigo);
+
+  const producto = productos.find((p) => p.codigo == codigo);
+
+  if (!producto) {
+    console.error("❌ Producto no encontrado:", codigo);
+    mostrarMensaje("Error: producto no encontrado", "error");
+    return;
+  }
+
+  const itemExistente = carrito.find((item) => item.codigo === codigo);
+  const stock = parsearNumero(producto.disponibilidad || producto.stock || 0);
+  if (stock <= 0) {
+    mostrarMensaje("Sin stock", "error", 2000);
+    return;
+  }
+
+  if (itemExistente) {
+    const nuevaCantidad = redondear3(itemExistente.cantidad + PASO_CANTIDAD);
+    if (nuevaCantidad <= stock) {
+      itemExistente.cantidad = nuevaCantidad;
+    } else {
+      mostrarMensaje("Stock insuficiente", "error", 2000);
+      return;
+    }
+  } else {
+    carrito.push({
+      codigo: codigo,
+      nombre: producto.producto || producto.nombre,
+      precio: parsearNumero(producto.precio || 0),
+      cantidad: redondear3(PASO_CANTIDAD),
+      maxStock: stock,
+    });
+  }
+
+  actualizarVistaCarrito();
+  renderizarProductos(productos);
+  actualizarContadorProducto(codigo);
+  reapplySearchFilter();
+};
+
+window.editarCantidad = (codigo, spanRef) => {
+  const producto = productos.find((p) => String(p.codigo) === String(codigo));
+  if (!producto || !spanRef) return;
+
+  // Evitar doble editor en el mismo elemento
+  if (spanRef.querySelector("input")) return;
+
+  const stock = parsearNumero(producto.disponibilidad || producto.stock || 0);
+  const itemExistente = carrito.find((item) => String(item.codigo) === String(codigo));
+  const actual = itemExistente ? itemExistente.cantidad : PASO_CANTIDAD;
+  const valorOriginal = itemExistente ? itemExistente.cantidad : 0;
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.inputMode = "decimal";
+  input.min = "0";
+  input.max = String(stock);
+  input.step = "0.001";
+  input.value = redondear3(actual).toFixed(3);
+  input.className = "cantidad-input-inline";
+
+  spanRef.dataset.valorPrevio = spanRef.textContent;
+  spanRef.textContent = "";
+  spanRef.appendChild(input);
+  input.focus();
+  input.select();
+
+  const aplicarCantidad = () => {
+    const cantidad = redondear3(parsearNumero(input.value));
+
+    if (cantidad > stock) {
+      mostrarMensaje("Cantidad supera el stock", "error", 2200);
+      spanRef.textContent = formatearNumero(valorOriginal);
+      return;
+    }
+
+    if (cantidad <= 0) {
+      carrito = carrito.filter((item) => String(item.codigo) !== String(codigo));
+    } else if (itemExistente) {
+      itemExistente.cantidad = cantidad;
+    } else {
+      carrito.push({
+        codigo: codigo,
+        nombre: producto.producto || producto.nombre,
+        precio: parsearNumero(producto.precio || 0),
+        cantidad: cantidad,
+        maxStock: stock,
+      });
+    }
+
+    actualizarVistaCarrito();
+    renderizarProductos(productos);
+    reapplySearchFilter();
+  };
+
+  const cancelar = () => {
+    spanRef.textContent = formatearNumero(valorOriginal);
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      input.blur();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelar();
+    }
+  });
+
+  input.addEventListener("blur", aplicarCantidad, { once: true });
+};
+
+// ============================================
+// 3B. DISMINUIR CANTIDAD DEL CARRITO
+// ============================================
+window.disminuirCantidad = (codigo) => {
+  console.log("➖ Disminuyendo producto con código:", codigo);
+
+  const index = carrito.findIndex((item) => item.codigo === codigo);
+
+  if (index !== -1) {
+    if (carrito[index].cantidad > PASO_CANTIDAD) {
+      const nuevaCantidad = redondear3(carrito[index].cantidad - PASO_CANTIDAD);
+      if (nuevaCantidad > 0) {
+        carrito[index].cantidad = nuevaCantidad;
+        console.log(`🔽 Nueva cantidad: ${carrito[index].cantidad}`);
+      } else {
+        carrito.splice(index, 1);
+      }
+    } else {
+      // Si es 1, eliminar del carrito
+      console.log("🗑️ Eliminando producto (cantidad llegó a 0)");
+      carrito.splice(index, 1);
+    }
+  }
+
+  actualizarVistaCarrito();
+  renderizarProductos(productos);
+  actualizarContadorProducto(codigo);
+  reapplySearchFilter();
+};
+
+// ============================================
+// 4. ELIMINAR DEL CARRITO
+// ============================================
+window.eliminarItemCarrito = (codigo) => {
+  console.log("🗑️ Eliminando producto con código:", codigo);
+
+  carrito = carrito.filter((item) => item.codigo !== codigo);
+
+  actualizarVistaCarrito();
+  actualizarContadorProducto(codigo);
+};
+
+// ============================================
+// 5. ACTUALIZAR CONTADOR DE PRODUCTO
+// ============================================
+function actualizarContadorProducto(codigo) {
+  const item = carrito.find((i) => i.codigo === codigo);
+  const span = document.getElementById(`cant-${codigo}`);
+  if (span) {
+    span.textContent = formatearNumero(item ? item.cantidad : 0);
+  }
+}
+
+// ============================================
+// 6. ACTUALIZAR VISTA DEL CARRITO
+// ============================================
+
+function actualizarVistaCarrito() {
+  const totalProductos = redondear3(carrito.reduce((sum, item) => sum + item.cantidad, 0));
+  const totalPagar = carrito.reduce(
+    (sum, item) => sum + item.cantidad * item.precio,
+    0,
+  );
+
+  // Actualizar resumen
+  totalItems.textContent = `${formatearNumero(totalProductos)} ${totalProductos === 1 ? "producto" : "productos"}`;
+  totalPrecio.textContent = formatearMoneda(totalPagar);
+  totalPagarSpan.textContent = formatearMoneda(totalPagar);
+
+  // Si el carrito está vacío
+  if (carrito.length === 0) {
+    carritoLista.innerHTML =
+      '<li style="text-align: center; padding: 24px; color: var(--text-secondary);">🛒 Carrito vacío</li>';
+    btnPagar.disabled = true;
+    cerrarCarrito();
+    return;
+  }
+
+  // Generar HTML para cada producto
+  let html = "";
+
+  for (let i = 0; i < carrito.length; i++) {
+    const item = carrito[i];
+
+    // Escapar comillas en el código
+    const codigoEscapado = item.codigo.replace(/"/g, "&quot;");
+    const subtotal = redondear3(item.cantidad * item.precio);
+
+    // Construir cada item del carrito
+    html += '<li class="carrito-item">';
+
+    // Información del producto (lado izquierdo)
+    html += '<div class="carrito-item-info">';
+    html += '<div class="carrito-item-nombre">' + item.nombre + "</div>";
+    html +=
+      '<div class="carrito-item-detalle">' +
+      formatearMoneda(item.precio) +
+      " c/u</div>";
+    html += "</div>";
+
+    // Controles y subtotal (lado derecho)
+    html += '<div style="display: flex; align-items: center; gap: 8px;">';
+
+    // Subtotal
+    html += '<span class="carrito-item-subtotal">' + formatearMoneda(subtotal) + "</span>";
+
+    // En la parte de los controles del carrito:
+
+    // Botón DISMINUIR
+    html +=
+      '<button class="btn-cantidad-carrito" onclick="disminuirCantidad(\'' +
+      codigoEscapado +
+      "')\">−</button>";
+
+    // Cantidad actual
+    html +=
+      '<span class="cantidad-seleccionada" style="min-width: 36px;" onclick="editarCantidad(\'' +
+      codigoEscapado +
+      '\', this)" title="Editar cantidad">' +
+      formatearNumero(item.cantidad) +
+      "</span>";
+
+    // Botón AUMENTAR
+    html +=
+      '<button class="btn-cantidad-carrito" onclick="agregarAlCarrito(\'' +
+      codigoEscapado +
+      "')\">+</button>";
+
+    // Botón ELIMINAR
+    html +=
+      '<button class="btn-eliminar-item" onclick="eliminarItemCarrito(\'' +
+      codigoEscapado +
+      "')\">✕</button>";
+
+    html += "</div>"; // Cierra el div de controles
+    html += "</li>"; // Cierra el item
+  }
+
+  // Insertar el HTML generado
+  carritoLista.innerHTML = html;
+
+  // Habilitar botón de pago
+  btnPagar.disabled = false;
+
+  // Actualizar cálculo de pago
+  calcularPago();
+}
+
+// ============================================
+// 7. CÁLCULO DE PAGO
+// ============================================
+function calcularPago() {
+  const total = redondear3(carrito.reduce(
+    (sum, item) => sum + item.cantidad * item.precio,
+    0,
+  ));
+  const efectivo = parsearNumero(efectivoInput.value);
+  const transferencia = parsearNumero(transferenciaInput.value);
+
+  const pagado = redondear3(efectivo + transferencia);
+  const diferencia = redondear3(pagado - total);
+
+  btnPagar.classList.remove("exacto", "falta", "vuelto");
+
+  if (Math.abs(diferencia) < 1 / FACTOR_DECIMALES) {
+    btnPagar.textContent = "Pagar ✓";
+    btnPagar.classList.add("exacto");
+    btnPagar.disabled = false;
+  } else if (diferencia > 0) {
+    btnPagar.textContent = `Vuelto ${formatearMoneda(diferencia)}`;
+    btnPagar.classList.add("vuelto");
+    btnPagar.disabled = false;
+  } else {
+    btnPagar.textContent = `Faltan ${formatearMoneda(Math.abs(diferencia))}`;
+    btnPagar.classList.add("falta");
+    btnPagar.disabled = true;
+  }
+}
+
+// ============================================
+// REFLEJAR VENTA EN STOCK LOCAL (UI + SQLite)
+// ============================================
+async function reflejarVentaEnStockLocal(productosVendidos) {
+  if (!Array.isArray(productosVendidos) || productosVendidos.length === 0) return;
+
+  for (var i = 0; i < productosVendidos.length; i++) {
+    var vendido = productosVendidos[i];
+    var prod = productos.find(function(p) {
+      return String(p.codigo) === String(vendido.codigo);
+    });
+
+    if (!prod) continue;
+
+    var stockActual = parsearNumero(prod.disponibilidad || prod.stock || 0);
+    var cantidadVendida = parsearNumero(vendido.cantidad || 0);
+    var nuevoStock = redondear3(Math.max(0, stockActual - cantidadVendida));
+
+    if (Object.prototype.hasOwnProperty.call(prod, "disponibilidad")) {
+      prod.disponibilidad = nuevoStock;
+    } else {
+      prod.stock = nuevoStock;
+    }
+  }
+
+  renderizarProductos(productos);
+
+  // Persistir stock local para modo offline
+  if (dbInicializado && DB.syncProductosLocal) {
+    try {
+      await DB.syncProductosLocal(productos);
+    } catch (e) {
+      console.log("⚠️ No se pudo persistir stock local:", e.message);
+    }
+  }
+}
+
+// ============================================
+// 8. FINALIZAR VENTA (soporta online y offline)
+// ============================================
+
+async function finalizarVenta() {
+  if (carrito.length === 0) {
+    mostrarMensaje("Agrega productos al carrito", "error");
+    return;
+  }
+
+  let efectivo = parsearNumero(efectivoInput.value);
+  let transferencia = parsearNumero(transferenciaInput.value);
+  const total = redondear3(carrito.reduce(
+    (sum, item) => sum + item.cantidad * item.precio,
+    0,
+  ));
+
+  const pagado = redondear3(efectivo + transferencia);
+  let vuelto = redondear3(pagado - total);
+
+  // 1. Si falta dinero, NO permitir
+  if (vuelto < 0) {
+    mostrarMensaje(`❌ Faltan ${formatearMoneda(Math.abs(vuelto))}`, "error");
+    return;
+  }
+
+  // 2. Si hay vuelto, preguntar con modal
+  if (vuelto > 0) {
+    const confirmar = await mostrarModalVuelto(total, pagado, vuelto);
+
+    if (!confirmar) {
+      mostrarMensaje("Venta cancelada", "info", 2000);
+      return;
+    }
+
+    // 3. AJUSTAR EFECTIVO AL MONTO EXACTO
+    if (efectivo >= vuelto) {
+      efectivo = redondear3(efectivo - vuelto);
+    } else {
+      const restante = redondear3(vuelto - efectivo);
+      efectivo = 0;
+      transferencia = redondear3(Math.max(0, transferencia - restante));
+    }
+
+    efectivoInput.value = formatearNumero(efectivo);
+    transferenciaInput.value = formatearNumero(transferencia);
+
+    console.log(`💰 Vuelto entregado. Nuevo efectivo: ${formatearMoneda(efectivo)}`);
+  }
+
+  // 4. Preparar datos de la venta
+  const ventaData = {
+    facturaId: generarFacturaId(),
+    fechaHora: (function() {
+      const f = new Date();
+      return f.getFullYear() + '-' + 
+             String(f.getMonth()+1).padStart(2,'0') + '-' + 
+             String(f.getDate()).padStart(2,'0') + 'T' +
+             String(f.getHours()).padStart(2,'0') + ':' + 
+             String(f.getMinutes()).padStart(2,'0') + ':' + 
+             String(f.getSeconds()).padStart(2,'0') + '.' + 
+             String(f.getMilliseconds()).padStart(3,'0');
+    })(),
+    pago: { efectivo, transferencia },
+    productos: carrito.map((item) => ({
+      codigo: item.codigo,
+      nombre: item.nombre,
+      cantidad: item.cantidad,
+      precio: item.precio,
+    })),
+  };
+
+  // 5. Procesar - SIEMPRE offline
+  try {
+    btnPagar.disabled = true;
+    btnPagar.textContent = "Procesando...";
+
+    // Guardar SIEMPRE en SQLite (offline)
+    var guardado = await DB.guardarVentaOffline(ventaData);
+
+    if (guardado) {
+      modoOffline = true;
+      await reflejarVentaEnStockLocal(ventaData.productos);
+      
+      var pendientes = await DB.contarVentasPendientes();
+      mostrarMensaje(
+        "✅ Venta guardada offline (" + pendientes + " pendientes)",
+        "exito",
+        3000,
+      );
+      await actualizarPanelEstado();
+    } else {
+      throw new Error("No se pudo guardar offline");
+    }
+
+    // Limpiar carrito
+    carrito = [];
+    efectivoInput.value = "0";
+    transferenciaInput.value = "0";
+    actualizarVistaCarrito();
+    renderizarProductos(productos);
+    reapplySearchFilter();
+    cerrarCarrito();
+    await actualizarPanelEstado();
+  } catch (error) {
+    console.error("❌ Error:", error);
+    mostrarMensaje(error.message, "error");
+  } finally {
+    btnPagar.disabled = false;
+    calcularPago();
+  }
+}
+
+// ============================================
+// GENERAR FACTURA ID PARA MODO OFFLINE
+// Formato: [5 dígitos fecha serial Excel] + [5 dígitos consecutivo]
+// USA LA REFERENCIA DE DATOS.XLSX - no calcula el prefijo
+// Si la referencia es 46141, y pasaron 0 días → 46141, si pasó 1 día → 46142
+// ============================================
+function generarFacturaId() {
+  const now = new Date();
+  const hoyISO = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  
+  // Leer referencia guardada del servidor Y su fecha
+  let ultimaReferencia = null;
+  let fechaReferencia = null;
+  try {
+    ultimaReferencia = localStorage.getItem('posmovil_ultima_factura_referencia');
+    fechaReferencia = localStorage.getItem('posmovil_fecha_referencia');
+  } catch(e) {}
+  
+  // Si tenemos referencia Y fecha, usarlas
+  if (ultimaReferencia && ultimaReferencia.length >= 10 && fechaReferencia) {
+    const prefijoRef = ultimaReferencia.substring(0, 5);
+    const sufijoRef = parseInt(ultimaReferencia.substring(5, 10)) || 0;
+    
+    // Calcular cuántos días pasaron desde la referencia
+    const refDate = new Date(fechaReferencia);
+    const todayDate = new Date(hoyISO);
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const diasDiff = Math.floor((todayDate - refDate) / msPerDay);
+    
+    const prefijoHoy = String(Number(prefijoRef) + diasDiff).padStart(5, '0');
+    
+    if (diasDiff === 0) {
+      // Mismo día que la referencia, incrementar sufijo
+      const nuevoSufijo = sufijoRef + 1;
+      const sufijo = nuevoSufijo.toString().padStart(5, '0');
+      const nuevoId = prefijoHoy + sufijo;
+      
+      try {
+        localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
+        localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
+        localStorage.setItem('posmovil_ultimo_sufijo', nuevoSufijo.toString());
+      } catch(e) {}
+      
+      console.log('📋 FacturaID generado: ' + nuevoId + ' (mismo día que referencia)');
+      return nuevoId;
+    } else {
+      // Nuevo día (o días), empezar sufijo en 1
+      const sufijo = "00001";
+      const nuevoId = prefijoHoy + sufijo;
+      
+      try {
+        localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
+        localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
+        localStorage.setItem('posmovil_ultimo_sufijo', '1');
+        localStorage.setItem('posmovil_fecha_referencia', hoyISO);
+      } catch(e) {}
+      
+      console.log('📋 FacturaID generado: ' + nuevoId + ' (nuevo día, díasDiff=' + diasDiff + ')');
+      return nuevoId;
+    }
+  }
+  
+  // Fallback: sin referencia, usar la fecha actual (primera vez)
+  // Aquí SÍ calculamos el prefijo porque no tenemos referencia
+  const fechaBase = new Date(1900, 0, 1);
+  const diffMs = now - fechaBase;
+  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const fechaSerial = diffDias + 2;
+  const prefijoHoy = Math.floor(fechaSerial).toString().padStart(5, '0');
+  const sufijo = "00001";
+  const nuevoId = prefijoHoy + sufijo;
+  
+  try {
+    localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
+    localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
+    localStorage.setItem('posmovil_ultimo_sufijo', '1');
+    localStorage.setItem('posmovil_fecha_referencia', hoyISO);
+  } catch(e) {}
+  
+  console.log('📋 FacturaID generado (sin referencia): ' + nuevoId);
+  return nuevoId;
+}
+// ============================================
+// 9. UTILIDADES
+// ============================================
+// Timeout global para limpiar mensajes automáticos
+var mensajeTimeoutId = null;
+
+function mostrarMensaje(texto, tipo, duracion = 3000) {
+  // Limpiar timeout anterior si existe
+  if (mensajeTimeoutId) {
+    clearTimeout(mensajeTimeoutId);
+    mensajeTimeoutId = null;
+  }
+
+  mensajeDiv.textContent = texto;
+  mensajeDiv.className = `mensaje ${tipo}`;
+  mensajeDiv.classList.remove("hidden");
+
+  // Si duracion es -1, el mensaje permanece hasta que se llame mostrarMensaje de nuevo
+  // Si duracion es 0, el mensaje se muestra pero nunca se oculta automáticamente
+  if (duracion > 0) {
+    mensajeTimeoutId = setTimeout(() => {
+      mensajeDiv.classList.add("hidden");
+      mensajeTimeoutId = null;
+    }, duracion);
+  }
+}
+
+window.toggleCarrito = () => {
+  const ahora = Date.now();
+  if (ahora - ultimoToggleCarritoTs < 220) return;
+  ultimoToggleCarritoTs = ahora;
+
+  const contenido = document.getElementById("carritoContenido");
+  const icono = document.getElementById("carritoIcono");
+  contenido.classList.toggle("abierto");
+  icono.classList.toggle("abierto");
+};
+
+window.cerrarCarrito = () => {
+  const contenido = document.getElementById("carritoContenido");
+  const icono = document.getElementById("carritoIcono");
+  contenido.classList.remove("abierto");
+  icono.classList.remove("abierto");
+};
+
+if (modalCancelar) {
+  modalCancelar.addEventListener("click", () => cerrarModalVuelto(false));
+}
+
+if (modalConfirmar) {
+  modalConfirmar.addEventListener("click", () => cerrarModalVuelto(true));
+}
+
+if (modalVuelto) {
+  modalVuelto.addEventListener("click", (e) => {
+    if (e.target === modalVuelto) cerrarModalVuelto(false);
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!modalVuelto || modalVuelto.classList.contains("hidden")) return;
+  if (e.key === "Escape") cerrarModalVuelto(false);
+  if (e.key === "Enter") cerrarModalVuelto(true);
+});
+
+// ============================================
+// 10. FILTRO DE BÚSQUEDA
+// ============================================
+function reapplySearchFilter() {
+  const termino = searchInput.value.toLowerCase().trim();
+  if (termino) {
+    ultimoTermino = "";
+    aplicarFiltro(termino);
+  }
+}
+
+function toggleClearButton() {
+  if (searchInput.value.length > 0) {
+    searchClear.classList.remove("hidden");
+  } else {
+    searchClear.classList.add("hidden");
+  }
+}
+
+function limpiarBusqueda() {
+  searchInput.value = "";
+  toggleClearButton();
+  renderizarProductos(productos);
+}
+
+if (searchClear) {
+  searchClear.addEventListener("click", limpiarBusqueda);
+}
+
+const FILTRO_DEBOUNCE_MS = 140;
+let filtroTimer = null;
+let filtroRaf = 0;
+let ultimoTermino = "";
+
+function aplicarFiltro(termino) {
+  if (termino === ultimoTermino) return;
+  ultimoTermino = termino;
+
+  const filtrados = productos.filter(
+    (p) =>
+      (p.producto || p.nombre || "").toLowerCase().includes(termino) ||
+      (p.codigo || "").toString().includes(termino),
+  );
+
+  renderizarProductos(filtrados);
+}
+
+searchInput.addEventListener("input", (e) => {
+  const termino = e.target.value.toLowerCase().trim();
+  toggleClearButton();
+
+  if (filtroTimer) {
+    clearTimeout(filtroTimer);
+  }
+
+  if (!productosContainer.classList.contains("filtrando")) {
+    productosContainer.classList.add("filtrando");
+  }
+
+  filtroTimer = setTimeout(() => {
+    if (filtroRaf) {
+      cancelAnimationFrame(filtroRaf);
+    }
+
+    filtroRaf = requestAnimationFrame(() => {
+      aplicarFiltro(termino);
+      setTimeout(() => {
+        productosContainer.classList.remove("filtrando");
+      }, 160);
+    });
+  }, FILTRO_DEBOUNCE_MS);
+});
+
+// ============================================
+// 11. EVENT LISTENERS
+// ============================================
+efectivoInput.addEventListener("input", calcularPago);
+transferenciaInput.addEventListener("input", calcularPago);
+
+// Limpiar campo al hacer foco si tiene el valor por defecto "0"
+efectivoInput.addEventListener("focus", function() {
+  if (parsearNumero(this.value) === 0) {
+    this.value = "";
+  }
+});
+transferenciaInput.addEventListener("focus", function() {
+  if (parsearNumero(this.value) === 0) {
+    this.value = "";
+  }
+});
+
+// Restaurar "0" si el campo queda vacío al perder foco
+efectivoInput.addEventListener("blur", function() {
+  if (this.value === "") {
+    this.value = "0";
+  } else {
+    this.value = formatearNumero(parsearNumero(this.value));
+  }
+});
+transferenciaInput.addEventListener("blur", function() {
+  if (this.value === "") {
+    this.value = "0";
+  } else {
+    this.value = formatearNumero(parsearNumero(this.value));
+  }
+});
+
+btnPagar.addEventListener("click", finalizarVenta);
+
+// ============================================
+// INICIALIZACIÓN
+// ============================================
+document.addEventListener("DOMContentLoaded", async function() {
+  console.log("🚀 App iniciada");
+  
+  // Agregar botón de Merma a la UI
+  const headerActions = document.querySelector(".header-actions") || document.querySelector("#carritoIcono")?.parentElement;
+  if (headerActions) {
+    const btnMerma = document.createElement("button");
+    btnMerma.id = "btnMerma";
+    btnMerma.className = "btn-action btn-merma";
+    btnMerma.textContent = "Merma";
+    btnMerma.addEventListener("click", registrarMermaUI);
+    headerActions.appendChild(btnMerma);
+  }
+  
+  // Inicializar SQLite solo en APK
+  if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+    dbInicializado = await DB.initDatabase();
+    console.log("📦 SQLite inicializado:", dbInicializado);
+    if (DB.getStorageMode) {
+      console.log("📦 Modo de almacenamiento:", DB.getStorageMode());
+    }
+    
+    // Cargar servidor cacheado de sesiones anteriores
+    if (dbInicializado && DB.obtenerServidorCacheado) {
+      var urlCacheada = await DB.obtenerServidorCacheado();
+      if (urlCacheada) {
+        window.SERVER_URL = urlCacheada;
+        serverUrlCacheado = urlCacheada;
+        console.log("📡 Servidor cacheado cargado:", urlCacheada);
+        mostrarMensaje("✅ Servidor: " + urlCacheada, "exito", 2000);
+      }
+    }
+    
+    // Cargar indicador de pendientes
+    if (dbInicializado) {
+      await actualizarIndicadorSync();
+    }
+
+    // Limpieza de ventas antiguas (fire-and-forget, no bloquea UI)
+    if (dbInicializado && DB.limpiarVentasAntiguas) {
+      DB.limpiarVentasAntiguas().catch(function(e) {
+        console.warn("⚠️ Error en limpieza automática:", e);
+      });
+    }
+  }
+  
+  await actualizarPanelEstado();
+  await cargarProductos();
+  actualizarVistaCarrito();
+});
+
+// ============================================
+// REGISTRAR MERMA DESDE UI
+// ============================================
+window.registrarMermaUI = async function() {
+  // Obtener productos con cantidad seleccionada > 0 (del carrito)
+  const mermas = carrito
+    .filter(item => item.cantidad > 0)
+    .map(item => ({
+      codigo: item.codigo,
+      nombre: item.nombre,
+      cantidad: item.cantidad,
+    }));
+
+  if (mermas.length === 0) {
+    mostrarMensaje("No hay productos seleccionados para merma", "warning");
+    return;
+  }
+
+  if (!confirm(`¿Registrar ${mermas.length} merma(s)?`)) {
+    return;
+  }
+
+  try {
+    if (navigator.onLine) {
+      // Sincronizar directo con servidor
+      const resultado = await DB.sincronizarMermas();
+      if (resultado.success) {
+        mostrarMensaje("✅ Mermas sincronizadas: " + resultado.synced, "exito");
+        // Resetear cantidades en UI
+        carrito = [];
+        actualizarVistaCarrito();
+        renderizarProductos(productos);
+      } else {
+        mostrarMensaje("Error: " + resultado.error, "error");
+      }
+    } else {
+      // Guardar offline
+      const guardado = await DB.guardarMermaOffline(mermas);
+      if (guardado) {
+        mostrarMensaje("✅ Mermas guardadas offline", "exito");
+        // Restar stock local (si hay función disponible)
+        mermas.forEach(m => {
+          const prod = productos.find(p => p.codigo === m.codigo);
+          if (prod) {
+            const stockActual = parsearNumero(prod.disponibilidad || prod.stock || 0);
+            const nuevoStock = Math.max(0, stockActual - m.cantidad);
+            if (prod.disponibilidad !== undefined) prod.disponibilidad = nuevoStock;
+            if (prod.stock !== undefined) prod.stock = nuevoStock;
+          }
+        });
+        carrito = [];
+        actualizarVistaCarrito();
+        renderizarProductos(productos);
+      } else {
+        mostrarMensaje("Error guardando mermas offline", "error");
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error en registrarMermaUI:", error);
+    mostrarMensaje("Error: " + error.message, "error");
+  }
+};
+    }
+  }
+  
+  await actualizarPanelEstado();
+  await cargarProductos();
+  actualizarVistaCarrito();
+});
+
+function probarModalManual() {
+  mostrarModalVuelto(1000, 1100, 100);
+}
+
+// ============================================
+// MOSTRAR RESUMEN DEL DÍA (offline desde SQLite)
+// ============================================
+window.mostrarResumen = async function(fechaISO) {
+  var modalResumen = document.getElementById("modalResumen");
+  if (!modalResumen) return;
+
+  // Mostrar modal
+  modalResumen.classList.remove("hidden");
+
+  // Actualizar título con la fecha seleccionada
+  var tituloEl = document.getElementById("modalResumenTitulo");
+  if (tituloEl) {
+    var fechaTexto = fechaISO || new Date().toLocaleDateString('es-ES');
+    tituloEl.textContent = "📊 Resumen - " + fechaTexto;
+  }
+
+  var totalEl = document.getElementById("resumenTotal");
+  var efectivoEl = document.getElementById("resumenEfectivo");
+  var transferenciaEl = document.getElementById("resumenTransferencia");
+  var listaEl = document.getElementById("listaProductosResumen");
+
+  if (totalEl) totalEl.textContent = "...";
+  if (efectivoEl) efectivoEl.textContent = "...";
+  if (transferenciaEl) transferenciaEl.textContent = "...";
+  if (listaEl) listaEl.innerHTML = '<li class="info">Cargando resumen...</li>';
+
+  // Intentar primero desde SQLite (offline)
+  if (dbInicializado && DB.getResumenOffline) {
+    console.log("📦 Cargando resumen desde SQLite (offline)");
+    
+    try {
+      var data = await DB.getResumenOffline(fechaISO);
+      
+      actualizarResumenUI(data);
+      return;
+    } catch (error) {
+      console.error("❌ Error desde SQLite:", error);
+    }
+  }
+
+  // Fallback al servidor online
+  try {
+    console.log("🌐 Cargando resumen desde servidor");
+    var response = await fetch(obtenerUrlServidor() + "/api/resumen", {
+      headers: {
+        "x-session-token": window.SESSION_TOKEN || "",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    var data = await response.json();
+    actualizarResumenUI(data);
+  } catch (error) {
+    console.error("❌ Error cargando resumen:", error);
+    if (listaEl) listaEl.innerHTML = '<li class="error">Error al cargar resumen</li>';
+  }
+};
+
+// ============================================
+// ACTUALIZAR UI DEL RESUMEN
+// ============================================
+function actualizarResumenUI(data) {
+  var totalEl = document.getElementById("resumenTotal");
+  var efectivoEl = document.getElementById("resumenEfectivo");
+  var transferenciaEl = document.getElementById("resumenTransferencia");
+  var listaEl = document.getElementById("listaProductosResumen");
+
+  if (totalEl) totalEl.textContent = formatearMoneda(data.totalIngresado || 0);
+  if (efectivoEl) efectivoEl.textContent = formatearMoneda(data.efectivo || 0);
+  if (transferenciaEl) transferenciaEl.textContent = formatearMoneda(data.transferencia || 0);
+
+  if (listaEl) {
+    if (!data.productosVendidos || data.productosVendidos.length === 0) {
+      listaEl.innerHTML = '<li class="info">No hay ventas hoy</li>';
+    } else {
+      var html = "";
+      for (var i = 0; i < data.productosVendidos.length; i++) {
+        var p = data.productosVendidos[i];
+        html += '<li>';
+        html += '<span class="producto-nombre">' + p.nombre + '</span>';
+        html += '<span class="producto-cantidad">' + formatearNumero(p.cantidad || 0) + 'u</span>';
+        html += '<span class="producto-total">' + formatearMoneda(p.total || 0) + '</span>';
+        html += '</li>';
+      }
+      listaEl.innerHTML = html;
+    }
+  }
+}
+
+// ============================================
+// CERRAR MODAL RESUMEN
+// ============================================
+function cerrarModalResumen() {
+  var modalResumen = document.getElementById("modalResumen");
+  if (modalResumen) {
+    modalResumen.classList.add("hidden");
+  }
+}
+
+// Agregar event listeners para el modal de resumen
+document.addEventListener("DOMContentLoaded", function() {
+  var cerrarBtn = document.getElementById("modalCerrarResumen");
+  if (cerrarBtn) {
+    cerrarBtn.addEventListener("click", cerrarModalResumen);
+  }
+
+  var modalR = document.getElementById("modalResumen");
+  if (modalR) {
+    modalR.addEventListener("click", function(e) {
+      if (e.target === modalR) cerrarModalResumen();
+    });
+  }
+
+  // NUEVO: Event listener para selector de fecha
+  var inputFechaResumen = document.getElementById("inputFechaResumen");
+  if (inputFechaResumen) {
+    inputFechaResumen.addEventListener("change", function(e) {
+      var fechaSeleccionada = e.target.value;  // Formato YYYY-MM-DD
+      if (fechaSeleccionada) {
+        window.mostrarResumen(fechaSeleccionada);
+      }
+    });
+  }
+});
+
+// ============================================
+// SINCRONIZAR VENTAS OFFLINE + CARGAR PRODUCTOS
+// ============================================
+window.sincronizar = async function() {
+  if (!DB.sincronizarVentas) {
+    mostrarMensaje("Función sync no disponible", "error");
+    return;
+  }
+
+  var btnSync = document.getElementById("btnSync");
+  var syncIcon = document.getElementById("syncIcon");
+  var syncCount = document.getElementById("syncCount");
+
+  // Auto-detectar servidor si no hay uno configurado
+  if (!window.SERVER_URL) {
+    console.log("🔍 No hay servidor, auto-detectando...");
+    
+    // Mostrar modal de progreso
+    var modalSync = document.getElementById("modalSyncProgress");
+    var syncStatusText = document.getElementById("syncStatusText");
+    var btnCancelSync = document.getElementById("btnCancelSync");
+    var btnManualIP = document.getElementById("btnManualIP");
+    
+    if (modalSync) {
+      modalSync.classList.remove("hidden");
+      syncStatusText.textContent = "Escaneando la red...";
+    }
+
+    // Variables de control
+    var syncCancelled = false;
+    var manualIPSet = false;
+
+    // Manejar botón Cancelar
+    if (btnCancelSync) {
+      btnCancelSync.onclick = function() {
+        syncCancelled = true;
+        cancelarEscaneo = true; // Cancelar escaneo en database.js
+        if (modalSync) modalSync.classList.add("hidden");
+        mostrarMensaje("Sincronización cancelada", "info", 2000);
+      };
+    }
+
+    // Manejar botón IP Manual
+    if (btnManualIP) {
+      btnManualIP.onclick = function() {
+        var ipManual = prompt("Introduce la IP del servidor (ej. 10.225.81.54):", "192.168.1.");
+        if (ipManual) {
+          window.SERVER_URL = "http://" + ipManual + ":3000";
+          serverUrlCacheado = window.SERVER_URL;
+          // Guardar en cache si está disponible
+          if (DB.guardarServidorCacheado) {
+            DB.guardarServidorCacheado(window.SERVER_URL);
+          }
+          manualIPSet = true;
+          syncCancelled = true; // Detener escaneo
+          cancelarEscaneo = true;
+          if (modalSync) modalSync.classList.add("hidden");
+          mostrarMensaje("✅ IP manual: " + window.SERVER_URL, "exito", 2000);
+        }
+      };
+    }
+
+    if (DB.descubrirServidor) {
+      var servidorEncontrado = await DB.descubrirServidor();
+      
+      // Si se canceló o se usó IP manual, salir si no hay IP válida
+      if (syncCancelled && !manualIPSet) {
+        return; // Cancelado sin IP manual
+      }
+      
+      if (servidorEncontrado && !manualIPSet) {
+        window.SERVER_URL = servidorEncontrado;
+        serverUrlCacheado = servidorEncontrado;
+        console.log("✅ Servidor encontrado:", servidorEncontrado);
+        mostrarMensaje("✅ Servidor: " + servidorEncontrado, "exito", 3000);
+      } else if (!manualIPSet && !servidorEncontrado) {
+        console.log("❌ No se encontró servidor");
+        if (modalSync) modalSync.classList.add("hidden");
+        mostrarMensaje("❌ No se encontró el servidor. Si usa HotSpot: active el servidor y verifique que el teléfono también esté conectado a WiFi (no solo la laptop).", "error", 8000);
+        return;
+      }
+    }
+
+    // Ocultar modal si sigue visible
+    if (modalSync) modalSync.classList.add("hidden");
+  }
+
+  var pendientes = await DB.contarVentasPendientes();
+  if (pendientes === 0) {
+    mostrarMensaje("Sincronizando con servidor...", "info");
+  }
+
+  // Siempre intentar sincronizar aunque haya 0 pendientes
+  try {
+    btnSync.disabled = true;
+    syncIcon.textContent = "⏳";
+
+    var resultado = await DB.sincronizarVentas();
+
+    if (resultado.success) {
+      modoOffline = false;
+      guardarUltimaSync(new Date());
+      mostrarMensaje(
+        "✅ " + resultado.sincronizadas + " ventas sincronizadas",
+        "exito",
+        3000,
+      );
+      
+      // También cargar productos después de sincronizar
+      await cargarProductos();
+      await actualizarIndicadorSync();
+      await actualizarPanelEstado();
+      
+    } else {
+      modoOffline = true;
+      mostrarMensaje(resultado.error || "No se pudo sincronizar", "warning", 3000);
+      // Si no hay error pero synced = 0, también cargar productos
+      await cargarProductos();
+      await actualizarIndicadorSync();
+      await actualizarPanelEstado();
+    }
+  } catch (error) {
+    console.error("❌ Error sync:", error);
+    modoOffline = true;
+    mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
+    // Intentar cargar productos aunque falle sync
+    await cargarProductos();
+    await actualizarIndicadorSync();
+    await actualizarPanelEstado();
+  } finally {
+    btnSync.disabled = false;
+    syncIcon.textContent = "🔄";
+  }
+};
+
+// ============================================
+// ACTUALIZAR INDICADOR DE PENDIENTES
+// ============================================
+async function actualizarIndicadorSync() {
+  if (!DB.contarVentasPendientes) return 0;
+
+  var syncCount = document.getElementById("syncCount");
+  var pendientes = await DB.contarVentasPendientes();
+
+  if (syncCount) {
+    syncCount.textContent = pendientes > 0 ? String(pendientes) : "";
+  }
+
+  if (estadoPendientesEl) {
+    estadoPendientesEl.textContent = String(pendientes);
+  }
+
+  return pendientes;
+}
+
+

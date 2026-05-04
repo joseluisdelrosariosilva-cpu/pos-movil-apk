@@ -1,0 +1,29 @@
+{
+  "name": "webapp-beta",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build:android": "npx cap sync && npx cap build android",
+    "open:android": "npx cap open android"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@capacitor-community/sqlite": "^8.1.0",
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/device": "^8.0.2",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "xlsx-populate": "^1.21.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "nodemon": "^3.1.14"
+  }
+}

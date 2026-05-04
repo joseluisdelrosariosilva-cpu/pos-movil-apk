@@ -1,0 +1,11 @@
+{
+  "appId": "com.gestionplus.posmovil",
+  "appName": "POS Movil",
+  "webDir": "src/public",
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "CapacitorSQLite": {}
+  }
+}

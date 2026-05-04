@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>POS Móvil</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-title">
+        <h1>Gestión Plus</h1>
+        <div class="subtitle">POS Móvil</div>
+      </div>
+      <div class="header-actions">
+        <button id="btnSync" class="btn-action btn-sync" onclick="sincronizar()" title="Sincronizar">
+          <span id="syncIcon">🔄</span>
+          <span id="syncCount"></span>
+        </button>
+        <button id="btnResumen" class="btn-action btn-resumen" onclick="mostrarResumen()" title="Resumen del día">
+          📊
+        </button>
+      </div>
+    </header>
+
+    <!-- Mensajes -->
+    <div id="mensaje" class="mensaje hidden"></div>
+
+    <!-- Estado Offline / Sync -->
+    <div class="estado-offline" id="estadoOffline">
+      <div class="estado-pill">
+        <span class="estado-label">Modo</span>
+        <strong id="estadoModo">--</strong>
+      </div>
+      <div class="estado-pill">
+        <span class="estado-label">Pendientes</span>
+        <strong id="estadoPendientes">0</strong>
+      </div>
+      <div class="estado-pill">
+        <span class="estado-label">Última sync</span>
+        <strong id="estadoUltimaSync">Nunca</strong>
+      </div>
+    </div>
+
+    <!-- Buscador -->
+    <div class="search-box">
+      <div class="search-wrapper">
+        <input type="text" id="searchInput" placeholder="Buscar producto..." autocomplete="off">
+        <button type="button" class="search-clear hidden" id="searchClear" aria-label="Limpiar búsqueda">&times;</button>
+      </div>
+    </div>
+
+    <!-- Lista de productos -->
+    <div id="productosContainer" class="productos-grid">
+      <div class="loading">Cargando productos...</div>
+    </div>
+
+    <!-- Carrito flotante -->
+<div class="carrito-flotante" id="carritoFlotante">
+  <div class="carrito-header" onclick="toggleCarrito()">
+    <div class="carrito-resumen">
+      <span class="carrito-items" id="totalItems">0 productos</span>
+      <span class="carrito-total" id="totalPrecio">$0</span>
+    </div>
+    <span class="carrito-icono" id="carritoIcono">▼</span>
+  </div>
+  
+  <div class="carrito-contenido" id="carritoContenido">
+    <!-- Lista de productos en el carrito -->
+    <ul class="carrito-lista" id="carritoLista"></ul>
+    
+    <!-- Formulario de pago -->
+    <div class="pago-form">
+      <div class="input-group">
+        <label>Efectivo ($)</label>
+        <input type="number" id="efectivo" min="0" step="0.001" value="0" placeholder="0">
+      </div>
+      
+      <div class="input-group">
+        <label>Transferencia ($)</label>
+        <input type="number" id="transferencia" min="0" step="0.001" value="0" placeholder="0">
+      </div>
+      
+      <div class="total-pagar">
+        <span>Total:</span>
+        <span id="totalPagar">$0</span>
+      </div>
+      
+      <button class="btn-pagar" id="btnPagar" disabled>Pagar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de confirmacion de vuelto -->
+<div id="modalVuelto" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalVueltoTitulo">
+  <div class="modal-card">
+    <h2 id="modalVueltoTitulo">Confirmar vuelto</h2>
+    <p id="modalVueltoMensaje" class="modal-mensaje"></p>
+    <div class="modal-detalles">
+      <div class="modal-detalle">
+        <span>Total</span>
+        <strong id="modalTotal">$0</strong>
+      </div>
+      <div class="modal-detalle">
+        <span>Pagado</span>
+        <strong id="modalPagado">$0</strong>
+      </div>
+      <div class="modal-detalle modal-vuelto">
+        <span>Vuelto</span>
+        <strong id="modalVueltoMonto">$0</strong>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="modalCancelar" class="modal-btn modal-btn-secundario">Cancelar</button>
+      <button type="button" id="modalConfirmar" class="modal-btn modal-btn-primario">Confirmar entrega</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Modal de Resumen -->
+<div id="modalResumen" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalResumenTitulo">
+  <div class="modal-card">
+    <!-- NUEVO: Selector de fecha -->
+    <div class="resumen-fecha-selector" style="margin-bottom: 15px;">
+      <label for="inputFechaResumen" style="margin-right: 10px;">📅 Fecha:</label>
+      <input type="date" id="inputFechaResumen" value="">
+    </div>
+    
+    <h2 id="modalResumenTitulo">📊 Resumen del Día</h2>
+    <div id="contenidoResumen" class="resumen-contenido">
+      <div class="resumen-totales">
+        <div class="resumen-total">
+          <span>Total Ingresado</span>
+          <strong id="resumenTotal">$0</strong>
+        </div>
+        <div class="resumen-detalle">
+          <span>💵 Efectivo</span>
+          <strong id="resumenEfectivo">$0</strong>
+        </div>
+        <div class="resumen-detalle">
+          <span>🏦 Transferencia</span>
+          <strong id="resumenTransferencia">$0</strong>
+        </div>
+      </div>
+      <h3>Productos Vendidos</h3>
+      <ul id="listaProductosResumen" class="lista-productos-resumen">
+      </ul>
+    </div>
+    <div class="modal-actions" style="display: flex; justify-content: center;">
+      <button type="button" id="modalCerrarResumen" class="modal-btn modal-btn-primario">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para sincronización en progreso -->
+<div id="modalSyncProgress" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalSyncTitulo">
+  <div class="modal-card">
+    <h2 id="modalSyncTitulo">🔍 Buscando servidor...</h2>
+    <p id="syncStatusText" class="modal-mensaje">Escaneando la red...</p>
+    <div class="modal-actions">
+      <button type="button" id="btnCancelSync" class="modal-btn modal-btn-secundario">Cancelar</button>
+      <button type="button" id="btnManualIP" class="modal-btn modal-btn-primario">IP Manual</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/database.js"></script>
+<script src="/js/app.js"></script>
+ 
+</body>
+</html>
