@@ -10,6 +10,7 @@ var cancelarEscaneo = false; // Bandera para cancelar escaneo de red
 const LS_KEYS = {
   productos: "posmovil_productos",
   ventas: "posmovil_ventas_pending",
+  mermas: "posmovil_mermas_pending",
   config: "posmovil_config",
 };
 
@@ -35,6 +36,7 @@ function guardarLocal(key, value) {
 function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.productos)) guardarLocal(LS_KEYS.productos, []);
   if (!localStorage.getItem(LS_KEYS.ventas)) guardarLocal(LS_KEYS.ventas, []);
+  if (!localStorage.getItem(LS_KEYS.mermas)) guardarLocal(LS_KEYS.mermas, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
 }
 
@@ -184,11 +186,6 @@ async function initDatabase() {
       "CREATE TABLE IF NOT EXISTS ventas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id TEXT, fecha_hora TEXT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, precio REAL, subtotal REAL, efectivo REAL, transferencia REAL, synced INTEGER DEFAULT 0)"
     );
 
-    // Tabla para mermas pendientes
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, nombre TEXT, cantidad INTEGER, synced INTEGER DEFAULT 0)"
-    );
-
     // Migración para instalaciones viejas (columna mal escrita: efectividad)
     try {
       await db.execute(
@@ -209,6 +206,11 @@ async function initDatabase() {
     // Tabla de configuración (cache del servidor, etc.)
     await db.execute(
       "CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT, timestamp INTEGER)"
+    );
+
+    // Tabla para mermas offline
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
     );
 
     console.log("✅ Base de datos SQLite inicializada");
@@ -348,106 +350,6 @@ async function guardarVentaOffline(venta) {
     var actuales2 = leerLocal(LS_KEYS.ventas, []);
     var lineas2 = construirLineasVenta(venta, 0);
     return guardarLocal(LS_KEYS.ventas, actuales2.concat(lineas2));
-  }
-}
-
-// ============================================
-// GUARDAR MERMA OFFLINE (SQLite o localStorage fallback)
-// ============================================
-async function guardarMermaOffline(mermas) {
-  if (!Array.isArray(mermas) || mermas.length === 0) return false;
-
-  if (storageMode === "sqlite" && db) {
-    try {
-      for (const merma of mermas) {
-        await db.execute(
-          "INSERT INTO mermas_pending (codigo, nombre, cantidad, synced) VALUES (?, ?, ?, 0)",
-          [merma.codigo, merma.nombre, merma.cantidad]
-        );
-      }
-      console.log("✅ Mermas guardadas offline");
-      return true;
-    } catch (error) {
-      console.error("❌ Error guardando mermas offline (SQLite):", error);
-      return false;
-    }
-  } else {
-    // Fallback a localStorage
-    const actuales = leerLocal("posmovil_mermas_pending", []);
-    const nuevas = mermas.map(m => ({
-      ...m,
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      synced: 0,
-    }));
-    guardarLocal("posmovil_mermas_pending", actuales.concat(nuevas));
-    return true;
-  }
-}
-
-// ============================================
-// OBTENER MERMAS PENDIENTES
-// ============================================
-async function getMermasPendientes() {
-  if (storageMode === "sqlite" && db) {
-    try {
-      const result = await db.execute("SELECT * FROM mermas_pending WHERE synced = 0");
-      return result.values || [];
-    } catch (error) {
-      console.error("❌ Error obteniendo mermas pendientes:", error);
-      return [];
-    }
-  } else {
-    const mermas = leerLocal("posmovil_mermas_pending", []);
-    return mermas.filter(m => m.synced === 0);
-  }
-}
-
-// ============================================
-// SINCRONIZAR MERMAS AL SERVIDOR
-// ============================================
-async function sincronizarMermas() {
-  const pendientes = await getMermasPendientes();
-  if (pendientes.length === 0) return { success: true, synced: 0 };
-
-  if (!window.SERVER_URL) {
-    const serverUrl = await descubrirServidor();
-    if (!serverUrl) return { success: false, error: "Servidor no encontrado" };
-    window.SERVER_URL = serverUrl;
-  }
-
-  try {
-    const response = await fetch(window.SERVER_URL + "/api/mermas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mermas: pendientes.map(m => ({
-          codigo: m.codigo,
-          producto: m.nombre,
-          cantidad: m.cantidad,
-        })),
-      }),
-    });
-
-    if (!response.ok) throw new Error("HTTP " + response.status);
-
-    // Marcar como sincronizadas
-    if (storageMode === "sqlite" && db) {
-      for (const m of pendientes) {
-        await db.execute("UPDATE mermas_pending SET synced = 1 WHERE id = ?", [m.id]);
-      }
-    } else {
-      const actuales = leerLocal("posmovil_mermas_pending", []);
-      const actualizadas = actuales.map(m =>
-        pendientes.some(p => p.id === m.id) ? { ...m, synced: 1 } : m
-      );
-      guardarLocal("posmovil_mermas_pending", actualizadas);
-    }
-
-    console.log("✅ " + pendientes.length + " mermas sincronizadas");
-    return { success: true, synced: pendientes.length };
-  } catch (error) {
-    console.error("❌ Error sincronizando mermas:", error);
-    return { success: false, error: error.message };
   }
 }
 
@@ -762,8 +664,187 @@ async function sincronizarVentas() {
       sincronizadas: result.sincronizadas || ventas.length,
       errores: result.errores || [],
     };
-  } catch (error) {
+   } catch (error) {
     console.error("❌ Error sincronizando:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// FUNCIONES PARA MERMAS OFFLINE
+// ============================================
+
+// Guardar merma en SQLite/localStorage
+async function guardarMermaOffline(merma) {
+  if (!merma || !Array.isArray(merma.productos) || merma.productos.length === 0) {
+    return false;
+  }
+
+  if (storageMode !== "sqlite" || !db) {
+    var actuales = leerLocal(LS_KEYS.mermas, []);
+    var lineas = [];
+    for (var i = 0; i < merma.productos.length; i++) {
+      var item = merma.productos[i];
+      lineas.push({
+        id: Date.now() + i + Math.floor(Math.random() * 1000),
+        codigo_producto: item.codigo,
+        nombre: item.nombre,
+        cantidad: Number(item.cantidad || 0),
+        fecha_hora: merma.fechaHora,
+        synced: 0,
+      });
+    }
+    return guardarLocal(LS_KEYS.mermas, actuales.concat(lineas));
+  }
+
+  try {
+    for (var j = 0; j < merma.productos.length; j++) {
+      var prod = merma.productos[j];
+      await db.execute(
+        "INSERT INTO mermas_pending (codigo_producto, nombre, cantidad, fecha_hora, synced) VALUES (?, ?, ?, ?, 0)",
+        [prod.codigo, prod.nombre, prod.cantidad, merma.fechaHora]
+      );
+    }
+    console.log("✅ Merma guardada offline (" + merma.productos.length + " productos)");
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando merma offline:", error);
+    // Fallback a localStorage
+    var actuales2 = leerLocal(LS_KEYS.mermas, []);
+    var lineas2 = [];
+    for (var k = 0; k < merma.productos.length; k++) {
+      var p = merma.productos[k];
+      lineas2.push({
+        id: Date.now() + k + Math.floor(Math.random() * 1000),
+        codigo_producto: p.codigo,
+        nombre: p.nombre,
+        cantidad: Number(p.cantidad || 0),
+        fecha_hora: merma.fechaHora,
+        synced: 0,
+      });
+    }
+    return guardarLocal(LS_KEYS.mermas, actuales2.concat(lineas2));
+  }
+}
+
+// Obtener mermas pendientes de sync
+async function getMermasPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
+      return Number(m.synced || 0) === 0;
+    });
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT * FROM mermas_pending WHERE synced = 0 ORDER BY id"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo mermas pendientes:", error);
+    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
+      return Number(m.synced || 0) === 0;
+    });
+  }
+}
+
+// Contar mermas pendientes
+async function contarMermasPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
+      return Number(m.synced || 0) === 0;
+    }).length;
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT COUNT(*) as count FROM mermas_pending WHERE synced = 0"
+    );
+    return result.values ? result.values[0].count : 0;
+  } catch (error) {
+    console.error("❌ Error contando mermas pendientes:", error);
+    return 0;
+  }
+}
+
+// Marcar mermas como sincronizadas
+async function marcarMermasSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE mermas_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
+    }
+  } else {
+    var todas = leerLocal(LS_KEYS.mermas, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
+    }
+    for (var x = 0; x < todas.length; x++) {
+      if (idsMap[String(todas[x].id)]) {
+        todas[x].synced = 1;
+      }
+    }
+    guardarLocal(LS_KEYS.mermas, todas);
+  }
+}
+
+// Sincronizar mermas al servidor
+// Acepta opcionalmente la URL del servidor como parámetro
+async function sincronizarMermas(serverUrl) {
+  var pendientes = await getMermasPendientes();
+  
+  if (pendientes.length === 0) {
+    return { success: true, sincronizadas: 0 };
+  }
+
+  // Usar URL pasada como parámetro, o la del window, o nada
+  var url = serverUrl || window.SERVER_URL;
+  
+  if (!url) {
+    return { success: false, error: "No hay servidor configurado para sincronizar mermas" };
+  }
+
+  // Preparar datos para enviar
+  var mermas = pendientes.map(function(m) {
+    return {
+      codigo: m.codigo_producto,
+      nombre: m.nombre,
+      cantidad: m.cantidad,
+      fechaHora: m.fecha_hora,
+    };
+  });
+
+  try {
+    var response = await fetch(url + "/api/mermas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-session-token": window.SESSION_TOKEN || "",
+      },
+      body: JSON.stringify({ mermas: mermas }),
+    });
+
+    if (!response.ok) {
+      var errorText = await response.text();
+      throw new Error("HTTP " + response.status + " - " + errorText);
+    }
+
+    var result = await response.json();
+
+    // Marcar como sincronizadas
+    var ids = pendientes.map(function(m) { return m.id; });
+    await marcarMermasSynced(ids);
+
+    console.log("✅ " + mermas.length + " mermas sincronizadas");
+    return {
+      success: true,
+      sincronizadas: result.sincronizadas || mermas.length,
+    };
+  } catch (error) {
+    console.error("❌ Error sincronizando mermas:", error.message);
     return { success: false, error: error.message };
   }
 }
@@ -1080,16 +1161,17 @@ window.Database = {
   getVentasPendientes: getVentasPendientes,
   contarVentasPendientes: contarVentasPendientes,
   sincronizarVentas: sincronizarVentas,
+  // Funciones para mermas
+  guardarMermaOffline: guardarMermaOffline,
+  getMermasPendientes: getMermasPendientes,
+  contarMermasPendientes: contarMermasPendientes,
+  sincronizarMermas: sincronizarMermas,
   getResumenOffline: getResumenOffline,
   limpiarVentasAntiguas: limpiarVentasAntiguas,
   obtenerServidorCacheado: obtenerServidorCacheado,
   guardarServidorCacheado: guardarServidorCacheado,
   limpiarServidorCacheado: limpiarServidorCacheado,
   descubrirServidor: descubrirServidor,
-  // Mermas
-  guardarMermaOffline: guardarMermaOffline,
-  sincronizarMermas: sincronizarMermas,
-  getMermasPendientes: getMermasPendientes,
 };
 
 console.log("📦 Database module loaded");

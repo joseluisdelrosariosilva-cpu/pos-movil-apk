@@ -795,6 +795,130 @@ async function finalizarVenta() {
 }
 
 // ============================================
+// PROCESAR MERMA DESDE CARRITO ACTUAL
+// ============================================
+window.procesarMerma = async function() {
+  // Filtrar productos con cantidad > 0
+  const productosConCantidad = carrito.filter(item => item.cantidad > 0);
+  
+  if (productosConCantidad.length === 0) {
+    mostrarMensaje("No hay productos con cantidad > 0 en el carrito", "warning");
+    return;
+  }
+  
+  // Construir lista para confirmación
+  let listaProductos = productosConCantidad.map(p => 
+    `${p.nombre}: ${formatearNumero(p.cantidad)} unidades`
+  ).join('\n');
+  
+  // Confirmar con el usuario
+  const confirmar = confirm(
+    `¿Desea sacar estas cantidades como merma?\n\n${listaProductos}\n\nSe descontarán del stock.`
+  );
+  
+  if (!confirmar) {
+    mostrarMensaje("Merma cancelada", "info", 2000);
+    return;
+  }
+  
+  // Preparar datos de merma
+  const mermaData = {
+    fechaHora: (function() {
+      const f = new Date();
+      return f.getFullYear() + '-' + 
+             String(f.getMonth()+1).padStart(2,'0') + '-' + 
+             String(f.getDate()).padStart(2,'0') + 'T' +
+             String(f.getHours()).padStart(2,'0') + ':' + 
+             String(f.getMinutes()).padStart(2,'0') + ':' + 
+             String(f.getSeconds()).padStart(2,'0') + '.' + 
+             String(f.getMilliseconds()).padStart(3,'0');
+    })(),
+    productos: productosConCantidad.map(item => ({
+      codigo: item.codigo,
+      nombre: item.nombre,
+      cantidad: item.cantidad,
+    }))
+  };
+  
+  try {
+    mostrarMensaje("Guardando merma...", "info");
+    
+    // Guardar merma offline
+    var guardado = await DB.guardarMermaOffline(mermaData);
+    
+    if (!guardado) {
+      throw new Error("No se pudo guardar la merma offline");
+    }
+    
+    // Actualizar stock local (descontar cantidades)
+    await reflejarMermaEnStockLocal(mermaData.productos);
+    
+    // Resetear cantidades del carrito a 0
+    carrito = [];
+    efectivoInput.value = "0";
+    transferenciaInput.value = "0";
+    actualizarVistaCarrito();
+    renderizarProductos(productos);
+    reapplySearchFilter();
+    cerrarCarrito();
+    
+    // Cambiar a modo offline (todo se guarda offline hasta sincronizar)
+    modoOffline = true;
+    
+    // Actualizar indicadores (modo y pendientes)
+    await actualizarPanelEstado();
+    await actualizarIndicadorSync();
+    
+    mostrarMensaje(
+      "✅ Merma guardada offline (" + productosConCantidad.length + " productos)",
+      "exito",
+      3000
+    );
+    
+  } catch (error) {
+    console.error("❌ Error en procesarMerma:", error);
+    mostrarMensaje(error.message, "error");
+  }
+}
+
+// ============================================
+// REFLEJAR MERMA EN STOCK LOCAL (UI + SQLite)
+// ============================================
+async function reflejarMermaEnStockLocal(productosMerma) {
+  if (!Array.isArray(productosMerma) || productosMerma.length === 0) return;
+  
+  for (var i = 0; i < productosMerma.length; i++) {
+    var merma = productosMerma[i];
+    var prod = productos.find(function(p) {
+      return String(p.codigo) === String(merma.codigo);
+    });
+    
+    if (!prod) continue;
+    
+    var stockActual = parsearNumero(prod.disponibilidad || prod.stock || 0);
+    var cantidadMerma = parsearNumero(merma.cantidad || 0);
+    var nuevoStock = redondear3(Math.max(0, stockActual - cantidadMerma));
+    
+    if (Object.prototype.hasOwnProperty.call(prod, "disponibilidad")) {
+      prod.disponibilidad = nuevoStock;
+    } else {
+      prod.stock = nuevoStock;
+    }
+  }
+  
+  renderizarProductos(productos);
+  
+  // Persistir stock local para modo offline
+  if (dbInicializado && DB.syncProductosLocal) {
+    try {
+      await DB.syncProductosLocal(productos);
+    } catch (e) {
+      console.log("⚠️ No se pudo persistir stock local:", e.message);
+    }
+  }
+}
+
+// ============================================
 // GENERAR FACTURA ID PARA MODO OFFLINE
 // Formato: [5 dígitos fecha serial Excel] + [5 dígitos consecutivo]
 // USA LA REFERENCIA DE DATOS.XLSX - no calcula el prefijo
@@ -1056,17 +1180,6 @@ btnPagar.addEventListener("click", finalizarVenta);
 document.addEventListener("DOMContentLoaded", async function() {
   console.log("🚀 App iniciada");
   
-  // Agregar botón de Merma a la UI
-  const headerActions = document.querySelector(".header-actions") || document.querySelector("#carritoIcono")?.parentElement;
-  if (headerActions) {
-    const btnMerma = document.createElement("button");
-    btnMerma.id = "btnMerma";
-    btnMerma.className = "btn-action btn-merma";
-    btnMerma.textContent = "Merma";
-    btnMerma.addEventListener("click", registrarMermaUI);
-    headerActions.appendChild(btnMerma);
-  }
-  
   // Inicializar SQLite solo en APK
   if (window.Capacitor && window.Capacitor.isNativePlatform()) {
     dbInicializado = await DB.initDatabase();
@@ -1081,7 +1194,7 @@ document.addEventListener("DOMContentLoaded", async function() {
       if (urlCacheada) {
         window.SERVER_URL = urlCacheada;
         serverUrlCacheado = urlCacheada;
-        console.log("📡 Servidor cacheado cargado:", urlCacheada);
+        console.log("📦 Servidor cacheado cargado:", urlCacheada);
         mostrarMensaje("✅ Servidor: " + urlCacheada, "exito", 2000);
       }
     }
@@ -1096,76 +1209,6 @@ document.addEventListener("DOMContentLoaded", async function() {
       DB.limpiarVentasAntiguas().catch(function(e) {
         console.warn("⚠️ Error en limpieza automática:", e);
       });
-    }
-  }
-  
-  await actualizarPanelEstado();
-  await cargarProductos();
-  actualizarVistaCarrito();
-});
-
-// ============================================
-// REGISTRAR MERMA DESDE UI
-// ============================================
-window.registrarMermaUI = async function() {
-  // Obtener productos con cantidad seleccionada > 0 (del carrito)
-  const mermas = carrito
-    .filter(item => item.cantidad > 0)
-    .map(item => ({
-      codigo: item.codigo,
-      nombre: item.nombre,
-      cantidad: item.cantidad,
-    }));
-
-  if (mermas.length === 0) {
-    mostrarMensaje("No hay productos seleccionados para merma", "warning");
-    return;
-  }
-
-  if (!confirm(`¿Registrar ${mermas.length} merma(s)?`)) {
-    return;
-  }
-
-  try {
-    if (navigator.onLine) {
-      // Sincronizar directo con servidor
-      const resultado = await DB.sincronizarMermas();
-      if (resultado.success) {
-        mostrarMensaje("✅ Mermas sincronizadas: " + resultado.synced, "exito");
-        // Resetear cantidades en UI
-        carrito = [];
-        actualizarVistaCarrito();
-        renderizarProductos(productos);
-      } else {
-        mostrarMensaje("Error: " + resultado.error, "error");
-      }
-    } else {
-      // Guardar offline
-      const guardado = await DB.guardarMermaOffline(mermas);
-      if (guardado) {
-        mostrarMensaje("✅ Mermas guardadas offline", "exito");
-        // Restar stock local (si hay función disponible)
-        mermas.forEach(m => {
-          const prod = productos.find(p => p.codigo === m.codigo);
-          if (prod) {
-            const stockActual = parsearNumero(prod.disponibilidad || prod.stock || 0);
-            const nuevoStock = Math.max(0, stockActual - m.cantidad);
-            if (prod.disponibilidad !== undefined) prod.disponibilidad = nuevoStock;
-            if (prod.stock !== undefined) prod.stock = nuevoStock;
-          }
-        });
-        carrito = [];
-        actualizarVistaCarrito();
-        renderizarProductos(productos);
-      } else {
-        mostrarMensaje("Error guardando mermas offline", "error");
-      }
-    }
-  } catch (error) {
-    console.error("❌ Error en registrarMermaUI:", error);
-    mostrarMensaje("Error: " + error.message, "error");
-  }
-};
     }
   }
   
@@ -1399,40 +1442,52 @@ window.sincronizar = async function() {
     mostrarMensaje("Sincronizando con servidor...", "info");
   }
 
+  // Capturar URL ANTES de cualquier operación
+  var urlServidor = window.SERVER_URL;
+
   // Siempre intentar sincronizar aunque haya 0 pendientes
   try {
     btnSync.disabled = true;
     syncIcon.textContent = "⏳";
-
+    
     var resultado = await DB.sincronizarVentas();
-
+    var mensajeSync = "";
+    
     if (resultado.success) {
       modoOffline = false;
       guardarUltimaSync(new Date());
-      mostrarMensaje(
-        "✅ " + resultado.sincronizadas + " ventas sincronizadas",
-        "exito",
-        3000,
-      );
-      
-      // También cargar productos después de sincronizar
-      await cargarProductos();
-      await actualizarIndicadorSync();
-      await actualizarPanelEstado();
-      
+      mensajeSync = "✅ " + resultado.sincronizadas + " ventas sincronizadas";
     } else {
       modoOffline = true;
-      mostrarMensaje(resultado.error || "No se pudo sincronizar", "warning", 3000);
-      // Si no hay error pero synced = 0, también cargar productos
-      await cargarProductos();
-      await actualizarIndicadorSync();
-      await actualizarPanelEstado();
+      mensajeSync = "⚠️ " + (resultado.error || "No se pudo sincronizar ventas");
     }
+    
+    // Sincronizar mermas SIEMPRE (independiente de ventas)
+    if (DB.sincronizarMermas) {
+      try {
+        var resultadoMermas = await DB.sincronizarMermas(urlServidor);
+        if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
+          mensajeSync += " y " + resultadoMermas.sincronizadas + " mermas";
+        } else if (!resultadoMermas.success) {
+          mensajeSync += " | Error mermas: " + resultadoMermas.error;
+        }
+      } catch (e) {
+        console.error("❌ Error sincronizando mermas:", e);
+        mensajeSync += " | Error mermas: " + e.message;
+      }
+    }
+    
+    mostrarMensaje(mensajeSync, resultado.success ? "exito" : "warning", 4000);
+    
+    // Actualizar UI
+    await cargarProductos();
+    await actualizarIndicadorSync();
+    await actualizarPanelEstado();
+    
   } catch (error) {
     console.error("❌ Error sync:", error);
     modoOffline = true;
     mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
-    // Intentar cargar productos aunque falle sync
     await cargarProductos();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
@@ -1443,23 +1498,34 @@ window.sincronizar = async function() {
 };
 
 // ============================================
-// ACTUALIZAR INDICADOR DE PENDIENTES
+// ACTUALIZAR INDICADOR DE PENDIENTES (ventas + mermas)
 // ============================================
 async function actualizarIndicadorSync() {
-  if (!DB.contarVentasPendientes) return 0;
+  if (!DB.contarVentasPendientes && !DB.contarMermasPendientes) return 0;
+
+  var pendientesVentas = 0;
+  var pendientesMermas = 0;
+  
+  if (DB.contarVentasPendientes) {
+    pendientesVentas = await DB.contarVentasPendientes();
+  }
+  
+  if (DB.contarMermasPendientes) {
+    pendientesMermas = await DB.contarMermasPendientes();
+  }
+  
+  var totalPendientes = pendientesVentas + pendientesMermas;
 
   var syncCount = document.getElementById("syncCount");
-  var pendientes = await DB.contarVentasPendientes();
-
   if (syncCount) {
-    syncCount.textContent = pendientes > 0 ? String(pendientes) : "";
+    syncCount.textContent = totalPendientes > 0 ? String(totalPendientes) : "";
   }
 
   if (estadoPendientesEl) {
-    estadoPendientesEl.textContent = String(pendientes);
+    estadoPendientesEl.textContent = String(totalPendientes);
   }
 
-  return pendientes;
+  return totalPendientes;
 }
 
 

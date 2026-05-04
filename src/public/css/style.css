@@ -186,6 +186,11 @@ body {
   /* Old styles removed - now handled by .btn-action */
 }
 
+.btn-merma {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ===== RESUMEN MODAL ===== */
 .resumen-contenido {
   max-height: 60vh;

@@ -1,8 +1,9 @@
-import express from "express";
+import { Router } from "express";
 import { registrarMermas } from "../controllers/mermas.controller.js";
 
-const router = express.Router();
+const router = Router();
 
-router.post("/", registrarMermas);
+// POST /api/mermas - Registrar mermas desde APK
+router.post("/mermas", registrarMermas);
 
 export default router;

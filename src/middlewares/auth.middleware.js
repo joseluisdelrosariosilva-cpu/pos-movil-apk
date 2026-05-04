@@ -24,9 +24,11 @@ const RUTAS_PUBLICAS = [
 const RUTAS_FLEXIBLES = [
   "/productos",
   "/ventas",
+  "/mermas",
   "/resumen",
   "/api/productos",
   "/api/ventas",
+  "/api/mermas",
   "/api/resumen",
   "/sync",
   "/api/sync",
