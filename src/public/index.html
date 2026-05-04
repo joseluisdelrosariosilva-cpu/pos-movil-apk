@@ -14,18 +14,16 @@
         <h1>Gestión Plus</h1>
         <div class="subtitle">POS Móvil</div>
       </div>
-      <div class="header-actions">
-        <button id="btnSync" class="btn-action btn-sync" onclick="sincronizar()" title="Sincronizar">
-          <span id="syncIcon">🔄</span>
-          <span id="syncCount"></span>
-        </button>
-        <button id="btnMerma" class="btn-action btn-merma" onclick="procesarMerma()" title="Procesar merma del carrito">
-          📉
-        </button>
-        <button id="btnResumen" class="btn-action btn-resumen" onclick="mostrarResumen()" title="Resumen del día">
-          📊
-        </button>
-      </div>
+       <div class="header-actions">
+         <button id="btnMenu" class="btn-action" onclick="toggleMenu()" title="Menú">
+           ⋮
+         </button>
+         <div id="menuDesplegable" class="menu-desplegable hidden">
+           <button onclick="sincronizar()">🔄 Sincronizar</button>
+           <button onclick="procesarMerma()">📉 Merma</button>
+           <button onclick="mostrarResumen()">📊 Resumen</button>
+         </div>
+       </div>
     </header>
 
     <!-- Mensajes -->

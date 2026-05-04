@@ -1528,4 +1528,21 @@ async function actualizarIndicadorSync() {
   return totalPendientes;
 }
 
+// ============================================
+// MENÚ DESPLEGABLE
+// ============================================
+function toggleMenu() {
+  const menu = document.getElementById("menuDesplegable");
+  if (menu) menu.classList.toggle("hidden");
+}
+
+// Cerrar menú si tocás afuera
+document.addEventListener("click", function (e) {
+  const menu = document.getElementById("menuDesplegable");
+  const btn = document.getElementById("btnMenu");
+  if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+    menu.classList.add("hidden");
+  }
+});
+
 
