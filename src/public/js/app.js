@@ -1604,12 +1604,51 @@ document.addEventListener("DOMContentLoaded", function() {
     btnCancelar.addEventListener("click", cerrarFormularioProducto);
   }
   
-  // Botón Guardar (SIN FUNCIÓN - pendiente)
+  // Botón Guardar
   var btnGuardar = document.getElementById("btnGuardarProducto");
   if (btnGuardar) {
-    btnGuardar.addEventListener("click", function() {
-      // Función pendiente - se implementará cuando el usuario lo indique
-      console.log("Botón Guardar presionado - función pendiente");
+    btnGuardar.addEventListener("click", async function() {
+      var codigo = document.getElementById("npCodigo").value.trim();
+      var nombre = document.getElementById("npNombre").value.trim();
+      var cantidad = parsearNumero(document.getElementById("npCantidad").value);
+      var precioVenta = parsearNumero(document.getElementById("npPrecioVenta").value);
+      
+      if (!nombre) {
+        mostrarMensaje("El nombre es requerido", "error");
+        return;
+      }
+      
+      if (precioVenta <= 0) {
+        mostrarMensaje("El precio debe ser mayor a 0", "error");
+        return;
+      }
+      
+      try {
+        var guardado = await DB.guardarNuevoProducto({
+          codigo: codigo,
+          nombre: nombre,
+          precioVenta: precioVenta,
+          cantidad: cantidad
+        });
+        
+        if (guardado) {
+          modoOffline = true;
+          productos.push({
+            codigo: codigo,
+            producto: nombre,
+            precio: precioVenta,
+            disponibilidad: cantidad
+          });
+          renderizarProductos(productos);
+          cerrarFormularioProducto();
+          mostrarMensaje("✅ " + codigo + " agregado", "exito", 3000);
+          actualizarPanelEstado();
+        } else {
+          mostrarMensaje("Error guardando", "error");
+        }
+      } catch (e) {
+        mostrarMensaje("Error: " + e.message, "error");
+      }
     });
   }
   
