@@ -18,11 +18,12 @@
          <button id="btnMenu" class="btn-action" onclick="toggleMenu()" title="Menú">
            ⋮
          </button>
-         <div id="menuDesplegable" class="menu-desplegable hidden">
-           <button onclick="sincronizar()">🔄 Sincronizar</button>
-           <button onclick="procesarMerma()">📉 Merma</button>
-           <button onclick="mostrarResumen()">📊 Resumen</button>
-         </div>
+          <div id="menuDesplegable" class="menu-desplegable hidden">
+            <button onclick="sincronizar()">🔄 Sincronizar</button>
+            <button onclick="procesarMerma()">📉 Merma</button>
+            <button onclick="mostrarResumen()">📊 Resumen</button>
+            <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
+          </div>
        </div>
     </header>
 
@@ -153,6 +154,50 @@
     <div class="modal-actions" style="display: flex; justify-content: center;">
       <button type="button" id="modalCerrarResumen" class="modal-btn modal-btn-primario">Cerrar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal para Nuevo Producto -->
+<div id="modalNuevoProducto" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalNuevoProductoTitulo">
+  <div class="modal-card">
+    <h2 id="modalNuevoProductoTitulo">➕ Nuevo Producto</h2>
+    
+    <form id="formNuevoProducto" onsubmit="return false;">
+      <div class="form-group">
+        <label for="npCodigo">Código</label>
+        <input type="text" id="npCodigo" readonly disabled class="input-readonly">
+      </div>
+      
+      <div class="form-group">
+        <label for="npFecha">Fecha</label>
+        <input type="date" id="npFecha" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="npNombre">Nombre</label>
+        <input type="text" id="npNombre" placeholder="Nombre del producto" required autocomplete="off">
+      </div>
+      
+      <div class="form-group">
+        <label for="npCantidad">Cantidad</label>
+        <input type="number" id="npCantidad" min="0" step="1" value="0" placeholder="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="npPrecioVenta">Precio Venta ($)</label>
+        <input type="number" id="npPrecioVenta" min="0" step="0.001" value="0" placeholder="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="npPrecioCosto">Precio Costo ($)</label>
+        <input type="number" id="npPrecioCosto" min="0" step="0.001" value="0" placeholder="0" required>
+      </div>
+      
+      <div class="modal-actions">
+        <button type="button" id="btnCancelarProducto" class="modal-btn modal-btn-secundario">Cancelar</button>
+        <button type="button" id="btnGuardarProducto" class="modal-btn modal-btn-primario">Guardar</button>
+      </div>
+    </form>
   </div>
 </div>
 

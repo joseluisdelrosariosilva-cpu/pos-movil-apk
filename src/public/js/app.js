@@ -1545,4 +1545,89 @@ document.addEventListener("click", function (e) {
   }
 });
 
+// ============================================
+// NUEVO PRODUCTO - MOSTRAR FORMULARIO
+// ============================================
+window.mostrarFormularioProducto = async function() {
+  const modal = document.getElementById("modalNuevoProducto");
+  const menu = document.getElementById("menuDesplegable");
+  
+  if (!modal) return;
+  
+  // Cerrar menú desplegable
+  if (menu) menu.classList.add("hidden");
+  
+  // Generar código automático
+  try {
+    if (DB.getUltimoCodigoProducto) {
+      var codigo = await DB.getUltimoCodigoProducto();
+      document.getElementById("npCodigo").value = codigo;
+    }
+  } catch (e) {
+    console.error("Error generando código:", e);
+    document.getElementById("npCodigo").value = "Pr_00001";
+  }
+  
+  // Poner fecha actual
+  var hoy = new Date();
+  var fechaISO = hoy.getFullYear() + '-' + 
+               String(hoy.getMonth()+1).padStart(2,'0') + '-' + 
+               String(hoy.getDate()).padStart(2,'0');
+  document.getElementById("npFecha").value = fechaISO;
+  
+  // Limpiar campos anteriores
+  document.getElementById("npNombre").value = "";
+  document.getElementById("npCantidad").value = "0";
+  document.getElementById("npPrecioVenta").value = "0";
+  document.getElementById("npPrecioCosto").value = "0";
+  
+  // Mostrar modal
+  modal.classList.remove("hidden");
+  document.getElementById("npNombre").focus();
+};
+
+// ============================================
+// NUEVO PRODUCTO - CERRAR FORMULARIO
+// ============================================
+function cerrarFormularioProducto() {
+  const modal = document.getElementById("modalNuevoProducto");
+  if (modal) modal.classList.add("hidden");
+}
+
+// ============================================
+// EVENT LISTENERS PARA FORMULARIO DE NUEVO PRODUCTO
+// ============================================
+document.addEventListener("DOMContentLoaded", function() {
+  // Botón Cancelar
+  var btnCancelar = document.getElementById("btnCancelarProducto");
+  if (btnCancelar) {
+    btnCancelar.addEventListener("click", cerrarFormularioProducto);
+  }
+  
+  // Botón Guardar (SIN FUNCIÓN - pendiente)
+  var btnGuardar = document.getElementById("btnGuardarProducto");
+  if (btnGuardar) {
+    btnGuardar.addEventListener("click", function() {
+      // Función pendiente - se implementará cuando el usuario lo indique
+      console.log("Botón Guardar presionado - función pendiente");
+    });
+  }
+  
+  // Cerrar modal al hacer clic fuera
+  var modalNuevo = document.getElementById("modalNuevoProducto");
+  if (modalNuevo) {
+    modalNuevo.addEventListener("click", function(e) {
+      if (e.target === modalNuevo) cerrarFormularioProducto();
+    });
+  }
+  
+  // Cerrar modal con ESC
+  document.addEventListener("keydown", function(e) {
+    if (!modalNuevo) return;
+    if (!modalNuevo.classList.contains("hidden") && e.key === "Escape") {
+      cerrarFormularioProducto();
+    }
+  });
+});
+
 

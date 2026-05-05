@@ -231,6 +231,74 @@ function isOnline() {
 }
 
 // ============================================
+// OBTENER ÚLTIMO CÓDIGO DE PRODUCTO
+// ============================================
+async function getUltimoCodigoProducto() {
+  if (storageMode !== "sqlite" || !db) {
+    var productosLocal = leerLocal(LS_KEYS.productos, []);
+    var ultimoCodigo = 0;
+    for (var i = 0; i < productosLocal.length; i++) {
+      var codigo = productosLocal[i].codigo || "";
+      if (codigo.indexOf("Pr_") === 0) {
+        var numero = parseInt(codigo.substring(3)) || 0;
+        if (numero > ultimoCodigo) ultimoCodigo = numero;
+      }
+    }
+    return "Pr_" + String(ultimoCodigo + 1).padStart(5, "0");
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT codigo FROM productos WHERE codigo LIKE 'Pr_%' ORDER BY LENGTH(codigo) DESC, codigo DESC LIMIT 1"
+    );
+    
+    if (result.values && result.values.length > 0) {
+      var ultimoCodigo = result.values[0].codigo || "";
+      if (ultimoCodigo.indexOf("Pr_") === 0) {
+        var numero = parseInt(ultimoCodigo.substring(3)) || 0;
+        return "Pr_" + String(numero + 1).padStart(5, "0");
+      }
+    }
+    return "Pr_00001";
+  } catch (error) {
+    console.error("❌ Error obteniendo último código:", error);
+    return "Pr_00001";
+  }
+}
+
+// ============================================
+// GUARDAR NUEVO PRODUCTO EN BD
+// ============================================
+async function guardarNuevoProducto(producto) {
+  if (!producto || !producto.codigo) {
+    return false;
+  }
+
+  if (storageMode !== "sqlite" || !db) {
+    var productosLocal = leerLocal(LS_KEYS.productos, []);
+    productosLocal.push({
+      codigo: producto.codigo,
+      nombre: producto.nombre,
+      precio: Number(producto.precioVenta || 0),
+      disponibilidad: Number(producto.cantidad || 0),
+    });
+    return guardarLocal(LS_KEYS.productos, productosLocal);
+  }
+
+  try {
+    await db.execute(
+      "INSERT OR REPLACE INTO productos (codigo, nombre, precio, disponibilidad) VALUES (?, ?, ?, ?)",
+      [producto.codigo, producto.nombre, Number(producto.precioVenta || 0), Number(producto.cantidad || 0)]
+    );
+    console.log("✅ Nuevo producto guardado:", producto.codigo);
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando nuevo producto:", error);
+    return false;
+  }
+}
+
+// ============================================
 // OBTENER PRODUCTOS DESDE SQLite
 // ============================================
 async function getProductosLocal() {
@@ -1172,6 +1240,9 @@ window.Database = {
   guardarServidorCacheado: guardarServidorCacheado,
   limpiarServidorCacheado: limpiarServidorCacheado,
   descubrirServidor: descubrirServidor,
+  // Funciones para nuevo producto
+  getUltimoCodigoProducto: getUltimoCodigoProducto,
+  guardarNuevoProducto: guardarNuevoProducto,
 };
 
 console.log("📦 Database module loaded");
