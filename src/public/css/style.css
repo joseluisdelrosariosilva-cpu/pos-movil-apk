@@ -976,12 +976,17 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 16px;
+  justify-content: flex-start;
 }
 
 .form-group label {
   font-size: 14px;
   color: var(--text-secondary);
   font-weight: 500;
+  min-height: 20px;
+  line-height: 1.3;
+  display: flex;
+  align-items: flex-start;
 }
 
 .form-group input[type="text"],
@@ -1025,6 +1030,26 @@ body {
 .form-group input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
+}
+
+/* ===== FORMULARIO: FILA DE 3 CAMPOS ===== */
+.form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.form-row-3 .form-group {
+  margin-bottom: 0;
+  height: 100%;
+}
+
+.form-row-3 .form-group label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ===== AJUSTES PARA MÓVIL ===== */

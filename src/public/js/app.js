@@ -1667,6 +1667,29 @@ document.addEventListener("DOMContentLoaded", function() {
       cerrarFormularioProducto();
     }
   });
+
+  // Limpiar campos numéricos al hacer foco si tienen "0"
+  var npCantidad = document.getElementById("npCantidad");
+  var npPrecioVenta = document.getElementById("npPrecioVenta");
+  var npPrecioCosto = document.getElementById("npPrecioCosto");
+
+  [npCantidad, npPrecioVenta, npPrecioCosto].forEach(function(input) {
+    if (!input) return;
+    
+    input.addEventListener("focus", function() {
+      if (parsearNumero(this.value) === 0) {
+        this.value = "";
+      }
+    });
+
+    input.addEventListener("blur", function() {
+      if (this.value === "") {
+        this.value = "0";
+      } else {
+        this.value = formatearNumero(parsearNumero(this.value));
+      }
+    });
+  });
 });
 
 
