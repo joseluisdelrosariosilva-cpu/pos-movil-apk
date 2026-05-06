@@ -1535,27 +1535,6 @@ window.sincronizar = async function() {
       logSyncAPK("Excepción sincronizando ventas: " + (eVentas.message || "desconocido"), "error");
     }
     
-    // Sincronizar mermas SIEMPRE (independiente de ventas)
-    if (DB.sincronizarMermas) {
-      try {
-        logSyncAPK("Sincronizando mermas...");
-        var resultadoMermas = await DB.sincronizarMermas(urlServidor);
-        if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
-          mensajeSync += " y " + resultadoMermas.sincronizadas + " mermas";
-          logSyncAPK("Mermas sincronizadas: " + resultadoMermas.sincronizadas);
-        } else if (!resultadoMermas.success) {
-          overallSuccess = false;
-          mensajeSync += " | Error mermas: " + resultadoMermas.error;
-          logSyncAPK("Error sincronizando mermas: " + resultadoMermas.error, "error");
-        }
-      } catch (e) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando mermas:", e);
-        mensajeSync += " | Error mermas: " + e.message;
-        logSyncAPK("Excepción sincronizando mermas: " + e.message, "error");
-      }
-    }
-    
     // Sincronizar entrada de productos SIEMPRE (independiente de ventas y mermas)
     if (DB.sincronizarEntradaProductos) {
       try {
@@ -1574,6 +1553,27 @@ window.sincronizar = async function() {
         console.error("❌ Error sincronizando entrada de productos:", e);
         mensajeSync += " | Error entrada productos: " + e.message;
         logSyncAPK("Excepción sincronizando entradas: " + e.message, "error");
+      }
+    }
+
+    // Sincronizar mermas SIEMPRE (después de entradas)
+    if (DB.sincronizarMermas) {
+      try {
+        logSyncAPK("Sincronizando mermas...");
+        var resultadoMermas = await DB.sincronizarMermas(urlServidor);
+        if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
+          mensajeSync += " y " + resultadoMermas.sincronizadas + " mermas";
+          logSyncAPK("Mermas sincronizadas: " + resultadoMermas.sincronizadas);
+        } else if (!resultadoMermas.success) {
+          overallSuccess = false;
+          mensajeSync += " | Error mermas: " + resultadoMermas.error;
+          logSyncAPK("Error sincronizando mermas: " + resultadoMermas.error, "error");
+        }
+      } catch (e) {
+        overallSuccess = false;
+        console.error("❌ Error sincronizando mermas:", e);
+        mensajeSync += " | Error mermas: " + e.message;
+        logSyncAPK("Excepción sincronizando mermas: " + e.message, "error");
       }
     }
 
