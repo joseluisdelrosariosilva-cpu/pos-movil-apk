@@ -11,6 +11,7 @@ const LS_KEYS = {
   productos: "posmovil_productos",
   ventas: "posmovil_ventas_pending",
   mermas: "posmovil_mermas_pending",
+  entrada_productos: "posmovil_entrada_productos_pending",
   config: "posmovil_config",
 };
 
@@ -33,10 +34,29 @@ function guardarLocal(key, value) {
   }
 }
 
+function logSyncDebugAPK(mensaje, tipo) {
+  if (tipo === "error") {
+    console.error(mensaje);
+  } else if (tipo === "warning") {
+    console.warn(mensaje);
+  } else {
+    console.log(mensaje);
+  }
+
+  try {
+    if (window && typeof window.logSyncAPK === "function") {
+      window.logSyncAPK(mensaje, tipo);
+    }
+  } catch (_) {
+    // Evitar romper flujo por logger visual
+  }
+}
+
 function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.productos)) guardarLocal(LS_KEYS.productos, []);
   if (!localStorage.getItem(LS_KEYS.ventas)) guardarLocal(LS_KEYS.ventas, []);
   if (!localStorage.getItem(LS_KEYS.mermas)) guardarLocal(LS_KEYS.mermas, []);
+  if (!localStorage.getItem(LS_KEYS.entrada_productos)) guardarLocal(LS_KEYS.entrada_productos, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
 }
 
@@ -213,6 +233,11 @@ async function initDatabase() {
       "CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
     );
 
+    // Tabla para entrada de nuevos productos (pendiente de sync al servidor)
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS entrada_productos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, nombre TEXT, cantidad INTEGER, precio_venta REAL, precio_costo REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
+    );
+
     console.log("✅ Base de datos SQLite inicializada");
     storageMode = "sqlite";
     return true;
@@ -294,6 +319,71 @@ async function guardarNuevoProducto(producto) {
     return true;
   } catch (error) {
     console.error("❌ Error guardando nuevo producto:", error);
+    return false;
+  }
+}
+
+// ============================================
+// GUARDAR ENTRADA COMPLETA DE PRODUCTO (productos + entrada_productos_pending)
+// ============================================
+async function guardarEntradaProductoCompleto(producto) {
+  if (!producto || !producto.codigo) {
+    return false;
+  }
+
+  // 1. Guardar en tabla productos (disponible para venta)
+  var guardadoEnProductos = await guardarNuevoProducto(producto);
+  if (!guardadoEnProductos) {
+    console.error("❌ Error guardando en tabla productos");
+    return false;
+  }
+
+  // 2. Guardar en tabla entrada_productos_pending (para sync al servidor)
+  var fechaHora = new Date().toISOString();
+  console.log("🔍 [DEBUG] guardarEntradaProductoCompleto - Datos:", JSON.stringify({
+    codigo: producto.codigo,
+    nombre: producto.nombre,
+    cantidad: producto.cantidad,
+    precioVenta: producto.precioVenta,
+    precioCosto: producto.precioCosto
+  }));
+
+  if (storageMode !== "sqlite" || !db) {
+    // Modo localStorage
+    var entradas = leerLocal(LS_KEYS.entrada_productos, []);
+    entradas.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      codigo: producto.codigo,
+      nombre: producto.nombre,
+      cantidad: Number(producto.cantidad || 0),
+      precio_venta: Number(producto.precioVenta || 0),
+      precio_costo: Number(producto.precioCosto || 0),
+      fecha_hora: fechaHora,
+      synced: 0,
+    });
+    console.log("🔍 [DEBUG] Guardado en localStorage, total entradas:", entradas.length);
+    return guardarLocal(LS_KEYS.entrada_productos, entradas);
+  }
+
+  // Modo SQLite
+  try {
+    console.log("🔍 [DEBUG] Guardando en SQLite entrada_productos_pending...");
+    await db.execute(
+      "INSERT INTO entrada_productos_pending (codigo, nombre, cantidad, precio_venta, precio_costo, fecha_hora, synced) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        producto.codigo,
+        producto.nombre,
+        Number(producto.cantidad || 0),
+        Number(producto.precioVenta || 0),
+        Number(producto.precioCosto || 0),
+        fechaHora,
+        0
+      ]
+    );
+    console.log("✅ Entrada de producto guardada para sync:", producto.codigo);
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando entrada_producto_pending:", error.message);
     return false;
   }
 }
@@ -918,6 +1008,159 @@ async function sincronizarMermas(serverUrl) {
 }
 
 // ============================================
+// FUNCIONES PARA ENTRADA DE PRODUCTOS (sync al servidor)
+// ============================================
+
+// Obtener entrada de productos pendientes de sync
+async function getEntradaProductosPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
+      return Number(p.synced || 0) === 0;
+    });
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT * FROM entrada_productos_pending WHERE synced = 0 ORDER BY id"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo entrada productos pendientes:", error);
+    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
+      return Number(p.synced || 0) === 0;
+    });
+  }
+}
+
+// Contar entrada de productos pendientes
+async function contarEntradaProductosPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
+      return Number(p.synced || 0) === 0;
+    }).length;
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT COUNT(*) as count FROM entrada_productos_pending WHERE synced = 0"
+    );
+    return result.values ? result.values[0].count : 0;
+  } catch (error) {
+    console.error("❌ Error contando entrada productos pendientes:", error);
+    return 0;
+  }
+}
+
+// Marcar entrada de productos como sincronizadas
+async function marcarEntradaProductosSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE entrada_productos_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
+    }
+  } else {
+    var todas = leerLocal(LS_KEYS.entrada_productos, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
+    }
+    for (var x = 0; x < todas.length; x++) {
+      if (idsMap[String(todas[x].id)]) {
+        todas[x].synced = 1;
+      }
+    }
+    guardarLocal(LS_KEYS.entrada_productos, todas);
+  }
+}
+
+// Sincronizar entrada de productos al servidor
+async function sincronizarEntradaProductos(serverUrl) {
+  logSyncDebugAPK("🔍 [DEBUG] sincronizarEntradaProductos() iniciado");
+  
+  var pendientes = await getEntradaProductosPendientes();
+  logSyncDebugAPK("🔍 [DEBUG] Pendientes entrada productos: " + pendientes.length);
+  
+  if (pendientes.length === 0) {
+    logSyncDebugAPK("🔍 [DEBUG] No hay entradas pendientes para sincronizar");
+    return { success: true, sincronizadas: 0 };
+  }
+
+  // Usar URL pasada como parámetro, o la del window, o nada
+  var url = serverUrl || window.SERVER_URL;
+  logSyncDebugAPK("🔍 [DEBUG] URL del servidor para entrada productos: " + url);
+  
+  if (!url) {
+    logSyncDebugAPK("🔍 [DEBUG] No hay URL configurada", "error");
+    return { success: false, error: "No hay servidor configurado para sincronizar entrada de productos" };
+  }
+
+  // Preparar datos para enviar
+  var productos = pendientes.map(function(p) {
+    return {
+      codigo: p.codigo,
+      nombre: p.nombre,
+      cantidad: p.cantidad,
+      precio_venta: p.precio_venta,
+      precio_costo: p.precio_costo,
+      fecha_hora: p.fecha_hora,
+    };
+  });
+  
+  logSyncDebugAPK("🔍 [DEBUG] Enviando " + productos.length + " productos al servidor");
+
+  try {
+    logSyncDebugAPK("🔍 [DEBUG] Haciendo fetch a: " + url + "/api/entrada-productos");
+    var response = await fetch(url + "/api/entrada-productos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-session-token": window.SESSION_TOKEN || "",
+      },
+      body: JSON.stringify({ productos: productos }),
+    });
+
+    logSyncDebugAPK("🔍 [DEBUG] Respuesta del servidor: " + response.status + " " + response.statusText);
+
+    if (!response.ok) {
+      var errorText = await response.text();
+      logSyncDebugAPK("🔍 [DEBUG] Error response: " + errorText, "error");
+      throw new Error("HTTP " + response.status + " - " + errorText);
+    }
+
+    var result = await response.json();
+    logSyncDebugAPK("🔍 [DEBUG] Resultado del servidor: " + (result && result.mensaje ? result.mensaje : "OK"));
+    if (result && Array.isArray(result.detalles) && result.detalles.length > 0) {
+      var maxDetalles = Math.min(result.detalles.length, 3);
+      for (var d = 0; d < maxDetalles; d++) {
+        var detalle = result.detalles[d];
+        logSyncDebugAPK(
+          "🧾 Excel -> " + detalle.codigo + " (Productos F" + detalle.filaProductos + ", Entrada F" + detalle.filaEntrada + ")"
+        );
+      }
+      if (result.detalles.length > maxDetalles) {
+        logSyncDebugAPK("🧾 ... y " + (result.detalles.length - maxDetalles) + " más");
+      }
+    }
+
+    // Marcar como sincronizadas
+    var ids = pendientes.map(function(p) { return p.id; });
+    await marcarEntradaProductosSynced(ids);
+    logSyncDebugAPK("🔍 [DEBUG] Marcadas como sincronizadas: " + ids.length + " productos");
+
+    logSyncDebugAPK("✅ " + productos.length + " entrada de productos sincronizadas");
+    return {
+      success: true,
+      sincronizadas: result.sincronizadas || productos.length,
+    };
+  } catch (error) {
+    logSyncDebugAPK("❌ Error sincronizando entrada de productos: " + error.message, "error");
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // AUTO-DESCUBRIR SERVIDOR EN RED LOCAL
 // ============================================
 const SERVIDOR_CACHE_KEY = "servidor_cache";
@@ -1243,6 +1486,11 @@ window.Database = {
   // Funciones para nuevo producto
   getUltimoCodigoProducto: getUltimoCodigoProducto,
   guardarNuevoProducto: guardarNuevoProducto,
+  guardarEntradaProductoCompleto: guardarEntradaProductoCompleto,
+  // Funciones para sincronizar entrada de productos
+  getEntradaProductosPendientes: getEntradaProductosPendientes,
+  contarEntradaProductosPendientes: contarEntradaProductosPendientes,
+  sincronizarEntradaProductos: sincronizarEntradaProductos,
 };
 
 console.log("📦 Database module loaded");

@@ -107,6 +107,58 @@ const modalConfirmar = document.getElementById("modalConfirmar");
 const estadoModoEl = document.getElementById("estadoModo");
 const estadoPendientesEl = document.getElementById("estadoPendientes");
 const estadoUltimaSyncEl = document.getElementById("estadoUltimaSync");
+const syncDebugLogEl = document.getElementById("syncDebugLog");
+
+const syncDebugBuffer = [];
+const MAX_SYNC_DEBUG_LINES = 8;
+
+function logSyncAPK(mensaje, tipo) {
+  var marcaTiempo = new Date().toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  var linea = "[" + marcaTiempo + "] " + mensaje;
+  syncDebugBuffer.push(linea);
+  if (syncDebugBuffer.length > MAX_SYNC_DEBUG_LINES) {
+    syncDebugBuffer.shift();
+  }
+
+  if (syncDebugLogEl) {
+    syncDebugLogEl.textContent = syncDebugBuffer.join("\n");
+  }
+
+  if (tipo === "error") {
+    console.error("📱[SYNC APK]", mensaje);
+  } else if (tipo === "warning") {
+    console.warn("📱[SYNC APK]", mensaje);
+  } else {
+    console.log("📱[SYNC APK]", mensaje);
+  }
+}
+
+window.logSyncAPK = logSyncAPK;
+
+async function contarPendientesTotales() {
+  var pendientesVentas = 0;
+  var pendientesMermas = 0;
+  var pendientesEntradaProductos = 0;
+
+  if (DB.contarVentasPendientes) {
+    pendientesVentas = await DB.contarVentasPendientes();
+  }
+
+  if (DB.contarMermasPendientes) {
+    pendientesMermas = await DB.contarMermasPendientes();
+  }
+
+  if (DB.contarEntradaProductosPendientes) {
+    pendientesEntradaProductos = await DB.contarEntradaProductosPendientes();
+  }
+
+  return pendientesVentas + pendientesMermas + pendientesEntradaProductos;
+}
 
 async function actualizarPanelEstado() {
   if (estadoModoEl) {
@@ -115,9 +167,9 @@ async function actualizarPanelEstado() {
     estadoModoEl.textContent = modoTexto + " (" + storage + ")";
   }
 
-  if (estadoPendientesEl && DB.contarVentasPendientes) {
+  if (estadoPendientesEl) {
     try {
-      var pendientes = await DB.contarVentasPendientes();
+      var pendientes = await contarPendientesTotales();
       estadoPendientesEl.textContent = String(pendientes);
     } catch (_) {
       estadoPendientesEl.textContent = "-";
@@ -1355,9 +1407,12 @@ document.addEventListener("DOMContentLoaded", function() {
 // ============================================
 window.sincronizar = async function() {
   if (!DB.sincronizarVentas) {
+    logSyncAPK("Función de sync de ventas no disponible", "error");
     mostrarMensaje("Función sync no disponible", "error");
     return;
   }
+
+  logSyncAPK("Inicio de sincronización manual");
 
   var btnSync = document.getElementById("btnSync");
   var syncIcon = document.getElementById("syncIcon");
@@ -1366,6 +1421,7 @@ window.sincronizar = async function() {
   // Auto-detectar servidor si no hay uno configurado
   if (!window.SERVER_URL) {
     console.log("🔍 No hay servidor, auto-detectando...");
+    logSyncAPK("No hay servidor configurado, iniciando auto-detección");
     
     // Mostrar modal de progreso
     var modalSync = document.getElementById("modalSyncProgress");
@@ -1388,6 +1444,7 @@ window.sincronizar = async function() {
         syncCancelled = true;
         cancelarEscaneo = true; // Cancelar escaneo en database.js
         if (modalSync) modalSync.classList.add("hidden");
+        logSyncAPK("Sincronización cancelada por usuario", "warning");
         mostrarMensaje("Sincronización cancelada", "info", 2000);
       };
     }
@@ -1407,6 +1464,7 @@ window.sincronizar = async function() {
           syncCancelled = true; // Detener escaneo
           cancelarEscaneo = true;
           if (modalSync) modalSync.classList.add("hidden");
+          logSyncAPK("Servidor configurado manualmente: " + window.SERVER_URL);
           mostrarMensaje("✅ IP manual: " + window.SERVER_URL, "exito", 2000);
         }
       };
@@ -1417,6 +1475,7 @@ window.sincronizar = async function() {
       
       // Si se canceló o se usó IP manual, salir si no hay IP válida
       if (syncCancelled && !manualIPSet) {
+        logSyncAPK("Escaneo cancelado sin IP manual", "warning");
         return; // Cancelado sin IP manual
       }
       
@@ -1424,10 +1483,12 @@ window.sincronizar = async function() {
         window.SERVER_URL = servidorEncontrado;
         serverUrlCacheado = servidorEncontrado;
         console.log("✅ Servidor encontrado:", servidorEncontrado);
+        logSyncAPK("Servidor encontrado: " + servidorEncontrado);
         mostrarMensaje("✅ Servidor: " + servidorEncontrado, "exito", 3000);
       } else if (!manualIPSet && !servidorEncontrado) {
         console.log("❌ No se encontró servidor");
         if (modalSync) modalSync.classList.add("hidden");
+        logSyncAPK("No se encontró servidor en la red", "error");
         mostrarMensaje("❌ No se encontró el servidor. Si usa HotSpot: active el servidor y verifique que el teléfono también esté conectado a WiFi (no solo la laptop).", "error", 8000);
         return;
       }
@@ -1438,6 +1499,7 @@ window.sincronizar = async function() {
   }
 
   var pendientes = await DB.contarVentasPendientes();
+  logSyncAPK("Pendientes de ventas antes de sync: " + pendientes);
   if (pendientes === 0) {
     mostrarMensaje("Sincronizando con servidor...", "info");
   }
@@ -1447,37 +1509,79 @@ window.sincronizar = async function() {
 
   // Siempre intentar sincronizar aunque haya 0 pendientes
   try {
-    btnSync.disabled = true;
-    syncIcon.textContent = "⏳";
-    
-    var resultado = await DB.sincronizarVentas();
+    if (btnSync) btnSync.disabled = true;
+    if (syncIcon) syncIcon.textContent = "⏳";
     var mensajeSync = "";
-    
-    if (resultado.success) {
-      modoOffline = false;
-      guardarUltimaSync(new Date());
-      mensajeSync = "✅ " + resultado.sincronizadas + " ventas sincronizadas";
-    } else {
-      modoOffline = true;
-      mensajeSync = "⚠️ " + (resultado.error || "No se pudo sincronizar ventas");
+    var overallSuccess = true;
+    var resultadoVentas = { success: false, sincronizadas: 0, error: "No ejecutado" };
+
+    // 1) Ventas (bloque aislado)
+    try {
+      logSyncAPK("Sincronizando ventas...");
+      resultadoVentas = await DB.sincronizarVentas();
+
+      if (resultadoVentas.success) {
+        guardarUltimaSync(new Date());
+        mensajeSync = "✅ " + resultadoVentas.sincronizadas + " ventas sincronizadas";
+        logSyncAPK("Ventas sincronizadas: " + resultadoVentas.sincronizadas);
+      } else {
+        overallSuccess = false;
+        mensajeSync = "⚠️ " + (resultadoVentas.error || "No se pudo sincronizar ventas");
+        logSyncAPK("Error sincronizando ventas: " + (resultadoVentas.error || "desconocido"), "error");
+      }
+    } catch (eVentas) {
+      overallSuccess = false;
+      mensajeSync = "⚠️ Excepción ventas: " + (eVentas.message || "desconocido");
+      logSyncAPK("Excepción sincronizando ventas: " + (eVentas.message || "desconocido"), "error");
     }
     
     // Sincronizar mermas SIEMPRE (independiente de ventas)
     if (DB.sincronizarMermas) {
       try {
+        logSyncAPK("Sincronizando mermas...");
         var resultadoMermas = await DB.sincronizarMermas(urlServidor);
         if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
           mensajeSync += " y " + resultadoMermas.sincronizadas + " mermas";
+          logSyncAPK("Mermas sincronizadas: " + resultadoMermas.sincronizadas);
         } else if (!resultadoMermas.success) {
+          overallSuccess = false;
           mensajeSync += " | Error mermas: " + resultadoMermas.error;
+          logSyncAPK("Error sincronizando mermas: " + resultadoMermas.error, "error");
         }
       } catch (e) {
+        overallSuccess = false;
         console.error("❌ Error sincronizando mermas:", e);
         mensajeSync += " | Error mermas: " + e.message;
+        logSyncAPK("Excepción sincronizando mermas: " + e.message, "error");
       }
     }
     
-    mostrarMensaje(mensajeSync, resultado.success ? "exito" : "warning", 4000);
+    // Sincronizar entrada de productos SIEMPRE (independiente de ventas y mermas)
+    if (DB.sincronizarEntradaProductos) {
+      try {
+        logSyncAPK("Sincronizando entradas de productos...");
+        var resultadoEntradaProductos = await DB.sincronizarEntradaProductos(urlServidor);
+        if (resultadoEntradaProductos.success && resultadoEntradaProductos.sincronizadas > 0) {
+          mensajeSync += " y " + resultadoEntradaProductos.sincronizadas + " entradas de productos";
+          logSyncAPK("Entradas sincronizadas: " + resultadoEntradaProductos.sincronizadas);
+        } else if (!resultadoEntradaProductos.success) {
+          overallSuccess = false;
+          mensajeSync += " | Error entrada productos: " + resultadoEntradaProductos.error;
+          logSyncAPK("Error sincronizando entradas: " + resultadoEntradaProductos.error, "error");
+        }
+      } catch (e) {
+        overallSuccess = false;
+        console.error("❌ Error sincronizando entrada de productos:", e);
+        mensajeSync += " | Error entrada productos: " + e.message;
+        logSyncAPK("Excepción sincronizando entradas: " + e.message, "error");
+      }
+    }
+
+    // Modo offline depende del estado global
+    modoOffline = !overallSuccess;
+
+    logSyncAPK("Sincronización finalizada");
+    mostrarMensaje(mensajeSync, overallSuccess ? "exito" : "warning", 4000);
     
     // Actualizar UI
     await cargarProductos();
@@ -1487,34 +1591,25 @@ window.sincronizar = async function() {
   } catch (error) {
     console.error("❌ Error sync:", error);
     modoOffline = true;
+    logSyncAPK("Error general de sincronización: " + (error.message || "desconocido"), "error");
     mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
     await cargarProductos();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
   } finally {
-    btnSync.disabled = false;
-    syncIcon.textContent = "🔄";
+    if (btnSync) btnSync.disabled = false;
+    if (syncIcon) syncIcon.textContent = "🔄";
+    logSyncAPK("Botón de sincronizar reactivado");
   }
 };
 
 // ============================================
-// ACTUALIZAR INDICADOR DE PENDIENTES (ventas + mermas)
+// ACTUALIZAR INDICADOR DE PENDIENTES (ventas + mermas + entradas)
 // ============================================
 async function actualizarIndicadorSync() {
-  if (!DB.contarVentasPendientes && !DB.contarMermasPendientes) return 0;
+  if (!DB.contarVentasPendientes && !DB.contarMermasPendientes && !DB.contarEntradaProductosPendientes) return 0;
 
-  var pendientesVentas = 0;
-  var pendientesMermas = 0;
-  
-  if (DB.contarVentasPendientes) {
-    pendientesVentas = await DB.contarVentasPendientes();
-  }
-  
-  if (DB.contarMermasPendientes) {
-    pendientesMermas = await DB.contarMermasPendientes();
-  }
-  
-  var totalPendientes = pendientesVentas + pendientesMermas;
+  var totalPendientes = await contarPendientesTotales();
 
   var syncCount = document.getElementById("syncCount");
   if (syncCount) {
@@ -1624,10 +1719,11 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       
       try {
-        var guardado = await DB.guardarNuevoProducto({
+        var guardado = await DB.guardarEntradaProductoCompleto({
           codigo: codigo,
           nombre: nombre,
           precioVenta: precioVenta,
+          precioCosto: parsearNumero(document.getElementById("npPrecioCosto").value),
           cantidad: cantidad
         });
         
