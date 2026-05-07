@@ -34,6 +34,8 @@ const RUTAS_FLEXIBLES = [
   "/api/sync",
   "/entrada-productos",
   "/api/entrada-productos",
+  "/abastecimientos",
+  "/api/abastecimientos",
 ];
 
 const normalizarRuta = (ruta = "") => {

@@ -1077,6 +1077,105 @@ async function contarAbastecerPendientes() {
   }
 }
 
+// Obtener abastecimientos pendientes de sync
+async function getAbastecerPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
+      return Number(a.synced || 0) === 0;
+    });
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT * FROM abastecer_pending WHERE synced = 0 ORDER BY id"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo abastecimientos pendientes:", error);
+    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
+      return Number(a.synced || 0) === 0;
+    });
+  }
+}
+
+// Marcar abastecimientos como sincronizados
+async function marcarAbastecerSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE abastecer_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
+    }
+  } else {
+    var todos = leerLocal(LS_KEYS.abastecer, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
+    }
+    for (var x = 0; x < todos.length; x++) {
+      if (idsMap[String(todos[x].id)]) {
+        todos[x].synced = 1;
+      }
+    }
+    guardarLocal(LS_KEYS.abastecer, todos);
+  }
+}
+
+// Sincronizar abastecimientos al servidor
+// Acepta opcionalmente la URL del servidor como parámetro
+async function sincronizarAbastecer(serverUrl) {
+  var pendientes = await getAbastecerPendientes();
+
+  if (pendientes.length === 0) {
+    return { success: true, sincronizadas: 0 };
+  }
+
+  var url = serverUrl || window.SERVER_URL;
+  if (!url) {
+    return { success: false, error: "No hay servidor configurado para sincronizar abastecimientos" };
+  }
+
+  var abastecimientos = pendientes.map(function(a) {
+    return {
+      codigo: a.codigo_producto,
+      nombre: a.nombre,
+      cantidad: Number(a.cantidad || 0),
+      fechaHora: a.fecha_hora,
+    };
+  });
+
+  try {
+    var response = await fetch(url + "/api/abastecimientos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-session-token": window.SESSION_TOKEN || "",
+      },
+      body: JSON.stringify({ abastecimientos: abastecimientos }),
+    });
+
+    if (!response.ok) {
+      var errorText = await response.text();
+      throw new Error("HTTP " + response.status + " - " + errorText);
+    }
+
+    var result = await response.json();
+
+    var ids = pendientes.map(function(a) { return a.id; });
+    await marcarAbastecerSynced(ids);
+
+    console.log("✅ " + abastecimientos.length + " abastecimientos sincronizados");
+    return {
+      success: true,
+      sincronizadas: result.sincronizadas || abastecimientos.length,
+    };
+  } catch (error) {
+    console.error("❌ Error sincronizando abastecimientos:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // Marcar entrada de productos como sincronizadas
 async function marcarEntradaProductosSynced(ids) {
   if (storageMode === "sqlite" && db) {
@@ -1785,6 +1884,8 @@ window.Database = {
   actualizarStockProducto: actualizarStockProducto,
   guardarAbastecerOffline: guardarAbastecerOffline,
   contarAbastecerPendientes: contarAbastecerPendientes,
+  getAbastecerPendientes: getAbastecerPendientes,
+  sincronizarAbastecer: sincronizarAbastecer,
   // Funciones para historial de ventas
   getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
   deshacerVenta: deshacerVenta,

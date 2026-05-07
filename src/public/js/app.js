@@ -1921,55 +1921,84 @@ window.sincronizar = async function() {
     var mensajeSync = "";
     var overallSuccess = true;
     var resultadoVentas = { success: false, sincronizadas: 0, error: "No ejecutado" };
+    function agregarResumenOk(texto) {
+      if (!texto) return;
+      if (!mensajeSync) {
+        mensajeSync = "✅ " + texto;
+      } else {
+        mensajeSync += " y " + texto;
+      }
+    }
 
-    // 1) Ventas (bloque aislado)
+    // 1) Sincronizar entrada de productos SIEMPRE
+    if (DB.sincronizarEntradaProductos) {
+      try {
+        logSyncAPK("Sincronizando entradas de productos...");
+        var resultadoEntradaProductos = await DB.sincronizarEntradaProductos(urlServidor);
+        if (resultadoEntradaProductos.success && resultadoEntradaProductos.sincronizadas > 0) {
+          agregarResumenOk(resultadoEntradaProductos.sincronizadas + " entradas de productos sincronizadas");
+          logSyncAPK("Entradas sincronizadas: " + resultadoEntradaProductos.sincronizadas);
+        } else if (!resultadoEntradaProductos.success) {
+          overallSuccess = false;
+          mensajeSync = "⚠️ Error entrada productos: " + resultadoEntradaProductos.error;
+          logSyncAPK("Error sincronizando entradas: " + resultadoEntradaProductos.error, "error");
+        }
+      } catch (e) {
+        overallSuccess = false;
+        console.error("❌ Error sincronizando entrada de productos:", e);
+        mensajeSync = "⚠️ Excepción entrada productos: " + e.message;
+        logSyncAPK("Excepción sincronizando entradas: " + e.message, "error");
+      }
+    }
+
+    // 2) Sincronizar abastecimientos SIEMPRE (después de entradas y antes de ventas/mermas)
+    if (DB.sincronizarAbastecer) {
+      try {
+        logSyncAPK("Sincronizando abastecimientos...");
+        var resultadoAbastecer = await DB.sincronizarAbastecer(urlServidor);
+        if (resultadoAbastecer.success && resultadoAbastecer.sincronizadas > 0) {
+          agregarResumenOk(resultadoAbastecer.sincronizadas + " abastecimientos");
+          logSyncAPK("Abastecimientos sincronizados: " + resultadoAbastecer.sincronizadas);
+        } else if (!resultadoAbastecer.success) {
+          overallSuccess = false;
+          mensajeSync += " | Error abastecimientos: " + resultadoAbastecer.error;
+          logSyncAPK("Error sincronizando abastecimientos: " + resultadoAbastecer.error, "error");
+        }
+      } catch (eAbastecer) {
+        overallSuccess = false;
+        console.error("❌ Error sincronizando abastecimientos:", eAbastecer);
+        mensajeSync += " | Error abastecimientos: " + eAbastecer.message;
+        logSyncAPK("Excepción sincronizando abastecimientos: " + eAbastecer.message, "error");
+      }
+    }
+
+    // 3) Ventas (después de entradas y abastecimientos)
     try {
       logSyncAPK("Sincronizando ventas...");
       resultadoVentas = await DB.sincronizarVentas();
 
       if (resultadoVentas.success) {
         guardarUltimaSync(new Date());
-        mensajeSync = "✅ " + resultadoVentas.sincronizadas + " ventas sincronizadas";
+        agregarResumenOk(resultadoVentas.sincronizadas + " ventas");
         logSyncAPK("Ventas sincronizadas: " + resultadoVentas.sincronizadas);
       } else {
         overallSuccess = false;
-        mensajeSync = "⚠️ " + (resultadoVentas.error || "No se pudo sincronizar ventas");
+        mensajeSync += " | Error ventas: " + (resultadoVentas.error || "No se pudo sincronizar ventas");
         logSyncAPK("Error sincronizando ventas: " + (resultadoVentas.error || "desconocido"), "error");
       }
     } catch (eVentas) {
       overallSuccess = false;
-      mensajeSync = "⚠️ Excepción ventas: " + (eVentas.message || "desconocido");
+      mensajeSync += " | Excepción ventas: " + (eVentas.message || "desconocido");
       logSyncAPK("Excepción sincronizando ventas: " + (eVentas.message || "desconocido"), "error");
     }
-    
-    // Sincronizar entrada de productos SIEMPRE (independiente de ventas y mermas)
-    if (DB.sincronizarEntradaProductos) {
-      try {
-        logSyncAPK("Sincronizando entradas de productos...");
-        var resultadoEntradaProductos = await DB.sincronizarEntradaProductos(urlServidor);
-        if (resultadoEntradaProductos.success && resultadoEntradaProductos.sincronizadas > 0) {
-          mensajeSync += " y " + resultadoEntradaProductos.sincronizadas + " entradas de productos";
-          logSyncAPK("Entradas sincronizadas: " + resultadoEntradaProductos.sincronizadas);
-        } else if (!resultadoEntradaProductos.success) {
-          overallSuccess = false;
-          mensajeSync += " | Error entrada productos: " + resultadoEntradaProductos.error;
-          logSyncAPK("Error sincronizando entradas: " + resultadoEntradaProductos.error, "error");
-        }
-      } catch (e) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando entrada de productos:", e);
-        mensajeSync += " | Error entrada productos: " + e.message;
-        logSyncAPK("Excepción sincronizando entradas: " + e.message, "error");
-      }
-    }
 
-    // Sincronizar mermas SIEMPRE (después de entradas)
+    // 4) Sincronizar mermas SIEMPRE
     if (DB.sincronizarMermas) {
       try {
         logSyncAPK("Sincronizando mermas...");
         var resultadoMermas = await DB.sincronizarMermas(urlServidor);
         if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
-          mensajeSync += " y " + resultadoMermas.sincronizadas + " mermas";
+          agregarResumenOk(resultadoMermas.sincronizadas + " mermas");
           logSyncAPK("Mermas sincronizadas: " + resultadoMermas.sincronizadas);
         } else if (!resultadoMermas.success) {
           overallSuccess = false;
@@ -1986,6 +2015,10 @@ window.sincronizar = async function() {
 
     // Modo offline depende del estado global
     modoOffline = !overallSuccess;
+
+    if (!mensajeSync) {
+      mensajeSync = overallSuccess ? "✅ Sincronización completada" : "⚠️ Sincronización finalizada con advertencias";
+    }
 
     logSyncAPK("Sincronización finalizada");
     mostrarMensaje(mensajeSync, overallSuccess ? "exito" : "warning", 4000);
@@ -2011,7 +2044,7 @@ window.sincronizar = async function() {
 };
 
 // ============================================
-// ACTUALIZAR INDICADOR DE PENDIENTES (ventas + mermas + entradas)
+// ACTUALIZAR INDICADOR DE PENDIENTES (ventas + mermas + entradas + abastecimientos)
 // ============================================
 async function actualizarIndicadorSync() {
   if (!DB.contarVentasPendientes && !DB.contarMermasPendientes && !DB.contarEntradaProductosPendientes) return 0;
