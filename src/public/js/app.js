@@ -107,28 +107,7 @@ const modalConfirmar = document.getElementById("modalConfirmar");
 const estadoModoEl = document.getElementById("estadoModo");
 const estadoPendientesEl = document.getElementById("estadoPendientes");
 const estadoUltimaSyncEl = document.getElementById("estadoUltimaSync");
-const syncDebugLogEl = document.getElementById("syncDebugLog");
-
-const syncDebugBuffer = [];
-const MAX_SYNC_DEBUG_LINES = 8;
-
 function logSyncAPK(mensaje, tipo) {
-  var marcaTiempo = new Date().toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  var linea = "[" + marcaTiempo + "] " + mensaje;
-  syncDebugBuffer.push(linea);
-  if (syncDebugBuffer.length > MAX_SYNC_DEBUG_LINES) {
-    syncDebugBuffer.shift();
-  }
-
-  if (syncDebugLogEl) {
-    syncDebugLogEl.textContent = syncDebugBuffer.join("\n");
-  }
-
   if (tipo === "error") {
     console.error("📱[SYNC APK]", mensaje);
   } else if (tipo === "warning") {
@@ -137,8 +116,6 @@ function logSyncAPK(mensaje, tipo) {
     console.log("📱[SYNC APK]", mensaje);
   }
 }
-
-window.logSyncAPK = logSyncAPK;
 
 async function contarPendientesTotales() {
   var pendientesVentas = 0;

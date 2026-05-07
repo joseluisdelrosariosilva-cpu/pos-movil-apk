@@ -216,32 +216,6 @@ body {
   font-weight: 700;
 }
 
-.sync-debug-panel {
-  background: var(--bg-secondary);
-  border: 1px solid #3c3c3c;
-  border-radius: 12px;
-  padding: 8px 10px;
-  margin-bottom: 12px;
-}
-
-.sync-debug-title {
-  display: block;
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-#syncDebugLog {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--text-primary);
-  max-height: 120px;
-  overflow-y: auto;
-}
-
 .btn-sync,
 .btn-resumen,
 .btn-config {
