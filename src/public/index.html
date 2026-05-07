@@ -18,13 +18,14 @@
          <button id="btnMenu" class="btn-action" onclick="toggleMenu()" title="Menú">
            ⋮
          </button>
-          <div id="menuDesplegable" class="menu-desplegable hidden">
-             <button onclick="sincronizar()">🔄 Sincronizar</button>
-             <button onclick="procesarMerma()">📉 Merma</button>
-             <button onclick="mostrarResumen()">📊 Resumen</button>
-             <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
-             <button onclick="mostrarHistorialVentas()">📋 Historial</button>
-           </div>
+           <div id="menuDesplegable" class="menu-desplegable hidden">
+              <button onclick="sincronizar()">🔄 Sincronizar</button>
+              <button onclick="procesarMerma()">📉 Merma</button>
+              <button onclick="mostrarResumen()">📊 Resumen</button>
+              <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
+              <button onclick="mostrarAbastecer()">📦 Abastecer</button>
+              <button onclick="mostrarHistorialVentas()">📋 Historial</button>
+            </div>
        </div>
     </header>
 
@@ -228,6 +229,33 @@
         <button type="button" id="btnGuardarProducto" class="modal-btn modal-btn-primario">Guardar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Modal para Abastecer -->
+<div id="modalAbastecer" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalAbastecerTitulo">
+  <div class="modal-card">
+    <h2 id="modalAbastecerTitulo">📦 Abastecer Producto</h2>
+    
+    <div class="form-group">
+      <label for="abProductoSearch">Producto</label>
+      <div class="searchable-select">
+        <input type="text" id="abProductoSearch" placeholder="Buscar producto..." autocomplete="off">
+        <div class="searchable-dropdown hidden" id="abProductoDropdown"></div>
+        <input type="hidden" id="abProductoCodigo" value="">
+      </div>
+      <div id="abProductoInfo" class="producto-info-selected"></div>
+    </div>
+    
+    <div class="form-group">
+      <label for="abCantidad">Cantidad a agregar</label>
+      <input type="number" id="abCantidad" min="1" step="1" value="1" placeholder="0" required>
+    </div>
+    
+    <div class="modal-actions">
+      <button type="button" id="btnCancelarAbastecer" class="modal-btn modal-btn-secundario">Cancelar</button>
+      <button type="button" id="btnConfirmarAbastecer" class="modal-btn modal-btn-primario">Confirmar</button>
+    </div>
   </div>
 </div>
 

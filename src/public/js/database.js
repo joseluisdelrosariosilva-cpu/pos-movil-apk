@@ -12,6 +12,7 @@ const LS_KEYS = {
   ventas: "posmovil_ventas_pending",
   mermas: "posmovil_mermas_pending",
   entrada_productos: "posmovil_entrada_productos_pending",
+  abastecer: "posmovil_abastecer_pending",
   config: "posmovil_config",
 };
 
@@ -57,6 +58,7 @@ function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.ventas)) guardarLocal(LS_KEYS.ventas, []);
   if (!localStorage.getItem(LS_KEYS.mermas)) guardarLocal(LS_KEYS.mermas, []);
   if (!localStorage.getItem(LS_KEYS.entrada_productos)) guardarLocal(LS_KEYS.entrada_productos, []);
+  if (!localStorage.getItem(LS_KEYS.abastecer)) guardarLocal(LS_KEYS.abastecer, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
 }
 
@@ -236,6 +238,11 @@ async function initDatabase() {
     // Tabla para entrada de nuevos productos (pendiente de sync al servidor)
     await db.execute(
       "CREATE TABLE IF NOT EXISTS entrada_productos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, nombre TEXT, cantidad INTEGER, precio_venta REAL, precio_costo REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
+    );
+
+    // Tabla para abastecer (reabastecer productos existentes - offline)
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS abastecer_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
     );
 
     console.log("✅ Base de datos SQLite inicializada");
@@ -1051,6 +1058,25 @@ async function contarEntradaProductosPendientes() {
   }
 }
 
+// Contar abastecimientos pendientes
+async function contarAbastecerPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
+      return Number(a.synced || 0) === 0;
+    }).length;
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT COUNT(*) as count FROM abastecer_pending WHERE synced = 0"
+    );
+    return result.values ? result.values[0].count : 0;
+  } catch (error) {
+    console.error("❌ Error contando abastecimientos pendientes:", error);
+    return 0;
+  }
+}
+
 // Marcar entrada de productos como sincronizadas
 async function marcarEntradaProductosSynced(ids) {
   if (storageMode === "sqlite" && db) {
@@ -1076,6 +1102,7 @@ async function marcarEntradaProductosSynced(ids) {
 }
 
 // Sincronizar entrada de productos al servidor
+// Acepta opcionalmente la URL del servidor como parámetro
 async function sincronizarEntradaProductos(serverUrl) {
   logSyncDebugAPK("🔍 [DEBUG] sincronizarEntradaProductos() iniciado");
   
@@ -1157,6 +1184,87 @@ async function sincronizarEntradaProductos(serverUrl) {
   } catch (error) {
     logSyncDebugAPK("❌ Error sincronizando entrada de productos: " + error.message, "error");
     return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// FUNCIONES PARA ABASTECER (reabastecer productos existentes)
+// ============================================
+
+// Actualizar stock de un producto (sumar cantidad)
+async function actualizarStockProducto(codigo, cantidadSumar) {
+  if (storageMode !== "sqlite" || !db) {
+    // Modo localStorage
+    var productosLocal = leerLocal(LS_KEYS.productos, []);
+    var encontrado = false;
+    for (var i = 0; i < productosLocal.length; i++) {
+      if (productosLocal[i].codigo === codigo) {
+        productosLocal[i].disponibilidad = Number(productosLocal[i].disponibilidad || 0) + Number(cantidadSumar);
+        encontrado = true;
+        break;
+      }
+    }
+    if (encontrado) {
+      guardarLocal(LS_KEYS.productos, productosLocal);
+      return true;
+    }
+    return false;
+  }
+
+  try {
+    await db.execute(
+      "UPDATE productos SET disponibilidad = disponibilidad + ? WHERE codigo = ?",
+      [Number(cantidadSumar), codigo]
+    );
+    console.log("✅ Stock actualizado para " + codigo + " (+" + cantidadSumar + ")");
+    return true;
+  } catch (error) {
+    console.error("❌ Error actualizando stock:", error);
+    return false;
+  }
+}
+
+// Guardar abastecimiento en SQLite/localStorage
+async function guardarAbastecerOffline(abastecer) {
+  if (!abastecer || !abastecer.codigo || !abastecer.cantidad) {
+    return false;
+  }
+
+  // 1. Sumar cantidad al stock en tabla productos
+  var stockActualizado = await actualizarStockProducto(abastecer.codigo, abastecer.cantidad);
+  if (!stockActualizado) {
+    console.error("❌ Error actualizando stock del producto");
+    return false;
+  }
+
+  // 2. Guardar registro en abastecer_pending
+  var fechaHora = new Date().toISOString();
+
+  if (storageMode !== "sqlite" || !db) {
+    // Modo localStorage
+    var abastecimientos = leerLocal(LS_KEYS.abastecer, []);
+    abastecimientos.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      codigo_producto: abastecer.codigo,
+      nombre: abastecer.nombre,
+      cantidad: Number(abastecer.cantidad),
+      fecha_hora: fechaHora,
+      synced: 0,
+    });
+    return guardarLocal(LS_KEYS.abastecer, abastecimientos);
+  }
+
+  // Modo SQLite
+  try {
+    await db.execute(
+      "INSERT INTO abastecer_pending (codigo_producto, nombre, cantidad, fecha_hora, synced) VALUES (?, ?, ?, ?, ?)",
+      [abastecer.codigo, abastecer.nombre, Number(abastecer.cantidad), fechaHora, 0]
+    );
+    console.log("✅ Abastecimiento guardado:", abastecer.codigo, "+" + abastecer.cantidad);
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando abastecimiento:", error);
+    return false;
   }
 }
 
@@ -1673,6 +1781,10 @@ window.Database = {
   getEntradaProductosPendientes: getEntradaProductosPendientes,
   contarEntradaProductosPendientes: contarEntradaProductosPendientes,
   sincronizarEntradaProductos: sincronizarEntradaProductos,
+   // Funciones para abastecer (reabastecer productos existentes)
+  actualizarStockProducto: actualizarStockProducto,
+  guardarAbastecerOffline: guardarAbastecerOffline,
+  contarAbastecerPendientes: contarAbastecerPendientes,
   // Funciones para historial de ventas
   getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
   deshacerVenta: deshacerVenta,

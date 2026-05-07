@@ -1248,3 +1248,73 @@ body {
   font-weight: bold;
   font-size: 14px;
 }
+
+/* Searchable select for abastecer */
+.searchable-select {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-select input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #3c3c3c;
+  border-radius: 16px;
+  background-color: #3c3c3c;
+  color: #e8eaed;
+  font-size: 16px;
+  transition: border-color 0.2s;
+}
+
+.searchable-select input[type="text"]:focus {
+  outline: none;
+  border-color: #ff6300;
+}
+
+.searchable-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  z-index: 1000;
+  margin-top: 4px;
+}
+
+.searchable-dropdown.hidden {
+  display: none;
+}
+
+.searchable-dropdown .dropdown-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #3c3c3c;
+  transition: background-color 0.2s;
+}
+
+.searchable-dropdown .dropdown-item:hover {
+  background-color: #3c3c3c;
+}
+
+.searchable-dropdown .dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.producto-info-selected {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #3c3c3c;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #e8eaed;
+}
+
+.producto-info-selected .stock-info {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 4px;
+}

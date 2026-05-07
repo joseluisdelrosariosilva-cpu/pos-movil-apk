@@ -144,6 +144,7 @@ async function contarPendientesTotales() {
   var pendientesVentas = 0;
   var pendientesMermas = 0;
   var pendientesEntradaProductos = 0;
+  var pendientesAbastecer = 0;
 
   if (DB.contarVentasPendientes) {
     pendientesVentas = await DB.contarVentasPendientes();
@@ -157,7 +158,11 @@ async function contarPendientesTotales() {
     pendientesEntradaProductos = await DB.contarEntradaProductosPendientes();
   }
 
-  return pendientesVentas + pendientesMermas + pendientesEntradaProductos;
+  if (DB.contarAbastecerPendientes) {
+    pendientesAbastecer = await DB.contarAbastecerPendientes();
+  }
+
+  return pendientesVentas + pendientesMermas + pendientesEntradaProductos + pendientesAbastecer;
 }
 
 async function actualizarPanelEstado() {
@@ -969,6 +974,218 @@ async function reflejarMermaEnStockLocal(productosMerma) {
     }
   }
 }
+
+// ============================================
+// ABASTECER (reabastecer productos existentes - offline)
+// ============================================
+
+window.mostrarAbastecer = function() {
+  var modal = document.getElementById("modalAbastecer");
+  if (!modal) return;
+  
+  // Limpiar búsqueda anterior
+  var searchInput = document.getElementById("abProductoSearch");
+  var dropdown = document.getElementById("abProductoDropdown");
+  var codigoInput = document.getElementById("abProductoCodigo");
+  var infoDiv = document.getElementById("abProductoInfo");
+  
+  if (searchInput) searchInput.value = "";
+  if (dropdown) {
+    dropdown.innerHTML = "";
+    dropdown.classList.add("hidden");
+  }
+  if (codigoInput) codigoInput.value = "";
+  if (infoDiv) infoDiv.innerHTML = "";
+  
+  // Resetear cantidad
+  var cantidadInput = document.getElementById("abCantidad");
+  if (cantidadInput) {
+    cantidadInput.value = "1";
+  }
+  
+  modal.classList.remove("hidden");
+  if (searchInput) searchInput.focus();
+};
+
+function cerrarModalAbastecer() {
+  var modal = document.getElementById("modalAbastecer");
+  if (modal) {
+    modal.classList.add("hidden");
+  }
+  // Ocultar dropdown
+  var dropdown = document.getElementById("abProductoDropdown");
+  if (dropdown) dropdown.classList.add("hidden");
+}
+
+// Filtrar productos y mostrar dropdown
+function filtrarProductosAbastecer(termino) {
+  var dropdown = document.getElementById("abProductoDropdown");
+  if (!dropdown) return;
+  
+  termino = termino.toLowerCase().trim();
+  
+  // Filtrar productos
+  var resultados = [];
+  for (var i = 0; i < productos.length; i++) {
+    var p = productos[i];
+    var nombre = (p.producto || p.nombre || "").toLowerCase();
+    var codigo = (p.codigo || "").toLowerCase();
+    if (nombre.includes(termino) || codigo.includes(termino)) {
+      resultados.push(p);
+    }
+  }
+  
+  // Mostrar resultados
+  dropdown.innerHTML = "";
+  if (resultados.length === 0) {
+    dropdown.innerHTML = '<div class="dropdown-item" style="color: var(--text-secondary);">No se encontraron productos</div>';
+  } else {
+    for (let j = 0; j < resultados.length; j++) {
+      const p = resultados[j];
+      const codigo = p.codigo || "";
+      const nombre = p.producto || p.nombre || "Producto";
+      const stock = parsearNumero(p.disponibilidad || p.stock || 0);
+      
+      const item = document.createElement("div");
+      item.className = "dropdown-item";
+      item.innerHTML = nombre + ' <span style="color: var(--text-secondary); font-size: 12px;">(Stock: ' + formatearNumero(stock) + ')</span>';
+      item.dataset.codigo = codigo;
+      item.addEventListener("click", function() {
+        seleccionarProductoAbastecer(this.dataset.codigo, nombre, stock);
+      });
+      dropdown.appendChild(item);
+    }
+  }
+  
+  dropdown.classList.remove("hidden");
+}
+
+// Seleccionar producto del dropdown
+function seleccionarProductoAbastecer(codigo, nombre, stock) {
+  var codigoInput = document.getElementById("abProductoCodigo");
+  var searchInput = document.getElementById("abProductoSearch");
+  var infoDiv = document.getElementById("abProductoInfo");
+  var dropdown = document.getElementById("abProductoDropdown");
+  
+  if (codigoInput) codigoInput.value = codigo;
+  if (searchInput) searchInput.value = nombre;
+  if (infoDiv) {
+    infoDiv.innerHTML = '<strong>' + nombre + '</strong><div class="stock-info">Stock actual: ' + formatearNumero(stock) + '</div>';
+  }
+  if (dropdown) dropdown.classList.add("hidden");
+}
+
+window.confirmarAbastecer = async function() {
+  var codigoInput = document.getElementById("abProductoCodigo");
+  var cantidadInput = document.getElementById("abCantidad");
+  
+  if (!codigoInput || !cantidadInput) return;
+  
+  var codigo = codigoInput.value;
+  var cantidad = parsearNumero(cantidadInput.value);
+  
+  if (!codigo) {
+    mostrarMensaje("Selecciona un producto", "error");
+    return;
+  }
+  
+  if (cantidad <= 0) {
+    mostrarMensaje("La cantidad debe ser mayor a 0", "error");
+    return;
+  }
+  
+  // Buscar el producto
+  var producto = productos.find(function(p) {
+    return String(p.codigo) === String(codigo);
+  });
+  
+  if (!producto) {
+    mostrarMensaje("Producto no encontrado", "error");
+    return;
+  }
+  
+  var nombre = producto.producto || producto.nombre || "";
+  
+  try {
+    mostrarMensaje("Procesando abastecimiento...", "info");
+    
+    // Guardar abastecimiento offline
+    var guardado = await DB.guardarAbastecerOffline({
+      codigo: codigo,
+      nombre: nombre,
+      cantidad: cantidad
+    });
+    
+    if (!guardado) {
+      throw new Error("No se pudo guardar el abastecimiento");
+    }
+    
+    // Recargar productos desde SQLite local (no bajar del servidor)
+    productos = await DB.getProductosLocal();
+    renderizarProductos(productos);
+    
+    // Cerrar modal
+    cerrarModalAbastecer();
+    
+    // Actualizar contador de pendientes
+    await actualizarPanelEstado();
+    await actualizarIndicadorSync();
+    
+    mostrarMensaje(
+      "✅ Abastecido: " + nombre + " (+" + formatearNumero(cantidad) + ")",
+      "exito",
+      3000
+    );
+    
+  } catch (error) {
+    console.error("❌ Error en abastecer:", error);
+    mostrarMensaje("Error: " + error.message, "error");
+  }
+};
+
+// Event listeners para abastecer
+document.addEventListener("DOMContentLoaded", function() {
+  var cancelarBtn = document.getElementById("btnCancelarAbastecer");
+  if (cancelarBtn) {
+    cancelarBtn.addEventListener("click", cerrarModalAbastecer);
+  }
+  
+  var confirmarBtn = document.getElementById("btnConfirmarAbastecer");
+  if (confirmarBtn) {
+    confirmarBtn.addEventListener("click", function() {
+      window.confirmarAbastecer();
+    });
+  }
+  
+  var modalAbastecer = document.getElementById("modalAbastecer");
+  if (modalAbastecer) {
+    modalAbastecer.addEventListener("click", function(e) {
+      if (e.target === modalAbastecer) cerrarModalAbastecer();
+    });
+  }
+  
+  // Event listener para búsqueda de productos
+  var searchInput = document.getElementById("abProductoSearch");
+  if (searchInput) {
+    searchInput.addEventListener("input", function() {
+      filtrarProductosAbastecer(this.value);
+    });
+    
+    // Mostrar dropdown al recibir foco
+    searchInput.addEventListener("focus", function() {
+      filtrarProductosAbastecer(this.value);
+    });
+    
+    // Ocultar dropdown al hacer clic fuera
+    searchInput.addEventListener("blur", function() {
+      // Pequeño retraso para permitir que el clic en el dropdown se procese
+      setTimeout(function() {
+        var dropdown = document.getElementById("abProductoDropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+      }, 200);
+    });
+  }
+});
 
 // ============================================
 // GENERAR FACTURA ID PARA MODO OFFLINE
