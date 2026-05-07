@@ -1459,6 +1459,188 @@ async function obtenerIPLocal() {
 }
 
 // ============================================
+// FUNCIONES PARA HISTORIAL DE VENTAS
+// ============================================
+
+// Obtener ventas agrupadas por factura_id para una fecha específica
+// Devuelve un array de facturas con su estado de sincronización
+async function getVentasAgrupadasPorFactura(fechaISO) {
+  try {
+    var ventas = [];
+    var fechaFiltro = fechaISO || fechaLocalHoyISO();
+    
+    if (storageMode === "sqlite" && db) {
+      var result = await db.execute(
+        "SELECT * FROM ventas_pending WHERE date(fecha_hora) = ? ORDER BY factura_id, id",
+        [fechaFiltro]
+      );
+      ventas = result.values || [];
+    } else {
+      ventas = leerLocal(LS_KEYS.ventas, []).filter(function(v) {
+        return extraerFechaISO(v.fecha_hora || v.fechaHora) === fechaFiltro;
+      });
+    }
+    
+    if (ventas.length === 0) {
+      return [];
+    }
+    
+    // Agrupar por factura_id
+    var facturasMap = {};
+    
+    for (var i = 0; i < ventas.length; i++) {
+      var v = ventas[i];
+      var facturaId = v.factura_id || ("sin_factura_" + i);
+      
+      if (!facturasMap[facturaId]) {
+        facturasMap[facturaId] = {
+          facturaId: facturaId,
+          fechaHora: v.fecha_hora,
+          productos: [],
+          total: 0,
+          efectivo: v.efectivo || v.efectividad || 0,
+          transferencia: v.transferencia || 0,
+          synced: Number(v.synced || 0),
+          ids: []
+        };
+      }
+      
+      var factura = facturasMap[facturaId];
+      factura.productos.push({
+        codigo: v.codigo_producto,
+        nombre: v.nombre,
+        cantidad: Number(v.cantidad || 0),
+        precio: Number(v.precio || 0),
+        subtotal: Number(v.subtotal || 0)
+      });
+      factura.total += Number(v.subtotal || 0);
+      
+      // Si alguna línea no está sincronizada, la factura completa no lo está
+      if (Number(v.synced || 0) === 0) {
+        factura.synced = 0;
+      }
+      
+      factura.ids.push(v.id);
+    }
+    
+    // Convertir a array
+    var facturas = [];
+    var keys = Object.keys(facturasMap);
+    for (var j = 0; j < keys.length; j++) {
+      facturas.push(facturasMap[keys[j]]);
+    }
+    
+    // Ordenar por factura_id descendente (más recientes primero)
+    facturas.sort(function(a, b) {
+      return String(b.facturaId).localeCompare(String(a.facturaId));
+    });
+    
+    return facturas;
+  } catch (error) {
+    console.error("❌ Error en getVentasAgrupadasPorFactura:", error);
+    return [];
+  }
+}
+
+// Deshacer una venta (solo si no está sincronizada)
+// Esto suma las cantidades de vuelta al stock y elimina la venta de ventas_pending
+async function deshacerVenta(facturaId) {
+  try {
+    console.log("🔄 Deshaciendo venta:", facturaId);
+    
+    // 1. Obtener todas las líneas de la factura que NO estén sincronizadas
+    var lineas = [];
+    
+    if (storageMode === "sqlite" && db) {
+      var result = await db.execute(
+        "SELECT * FROM ventas_pending WHERE factura_id = ? AND synced = 0",
+        [facturaId]
+      );
+      lineas = result.values || [];
+      
+      if (lineas.length === 0) {
+        console.warn("⚠️ No se encontró la venta o ya está sincronizada");
+        return { success: false, error: "La venta no existe o ya fue sincronizada" };
+      }
+      
+      // 2. Sumar cantidades de vuelta al stock
+      for (var i = 0; i < lineas.length; i++) {
+        var linea = lineas[i];
+        var codigo = linea.codigo_producto;
+        var cantidad = Number(linea.cantidad || 0);
+        
+        // Obtener stock actual
+        var resultStock = await db.execute(
+          "SELECT disponibilidad FROM productos WHERE codigo = ?",
+          [codigo]
+        );
+        
+        if (resultStock.values && resultStock.values.length > 0) {
+          var stockActual = Number(resultStock.values[0].disponibilidad || 0);
+          var nuevoStock = stockActual + cantidad;
+          
+          await db.execute(
+            "UPDATE productos SET disponibilidad = ? WHERE codigo = ?",
+            [nuevoStock, codigo]
+          );
+          
+          console.log("📦 Stock restaurado:", codigo, "+" + cantidad, "→", nuevoStock);
+        }
+      }
+      
+      // 3. Eliminar las líneas de ventas_pending
+      await db.execute(
+        "DELETE FROM ventas_pending WHERE factura_id = ? AND synced = 0",
+        [facturaId]
+      );
+      
+      console.log("✅ Venta deshecha:", facturaId);
+      return { success: true, message: "Venta deshecha correctamente" };
+      
+    } else {
+      // Modo localStorage
+      var ventas = leerLocal(LS_KEYS.ventas, []);
+      var ventasFiltradas = [];
+      var lineasDeshechas = [];
+      
+      for (var j = 0; j < ventas.length; j++) {
+        var v = ventas[j];
+        if (String(v.factura_id) === String(facturaId) && Number(v.synced || 0) === 0) {
+          lineasDeshechas.push(v);
+        } else {
+          ventasFiltradas.push(v);
+        }
+      }
+      
+      if (lineasDeshechas.length === 0) {
+        return { success: false, error: "La venta no existe o ya fue sincronizada" };
+      }
+      
+      // Restaurar stock
+      var productosLocal = leerLocal(LS_KEYS.productos, []);
+      for (var k = 0; k < lineasDeshechas.length; k++) {
+        var ld = lineasDeshechas[k];
+        for (var p = 0; p < productosLocal.length; p++) {
+          if (String(productosLocal[p].codigo) === String(ld.codigo_producto)) {
+            productosLocal[p].disponibilidad = Number(productosLocal[p].disponibilidad || 0) + Number(ld.cantidad || 0);
+            break;
+          }
+        }
+      }
+      
+      guardarLocal(LS_KEYS.productos, productosLocal);
+      guardarLocal(LS_KEYS.ventas, ventasFiltradas);
+      
+      console.log("✅ Venta deshecha (localStorage):", facturaId);
+      return { success: true, message: "Venta deshecha correctamente" };
+    }
+  } catch (error) {
+    console.error("❌ Error deshaciendo venta:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // EXPORTAR COMO MÓDULO GLOBAL
 // ============================================
 window.Database = {
@@ -1491,6 +1673,9 @@ window.Database = {
   getEntradaProductosPendientes: getEntradaProductosPendientes,
   contarEntradaProductosPendientes: contarEntradaProductosPendientes,
   sincronizarEntradaProductos: sincronizarEntradaProductos,
+  // Funciones para historial de ventas
+  getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
+  deshacerVenta: deshacerVenta,
 };
 
 console.log("📦 Database module loaded");

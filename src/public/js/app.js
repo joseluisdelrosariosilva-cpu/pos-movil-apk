@@ -1403,6 +1403,196 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 // ============================================
+// HISTORIAL DE VENTAS
+// ============================================
+
+// Mostrar historial de ventas (agrupado por factura)
+window.mostrarHistorialVentas = async function(fechaISO) {
+  var modalHistorial = document.getElementById("modalHistorial");
+  if (!modalHistorial) return;
+  
+  // Mostrar modal
+  modalHistorial.classList.remove("hidden");
+  
+  // Actualizar fecha por defecto (hoy)
+  var inputFecha = document.getElementById("inputFechaHistorial");
+  if (inputFecha && !inputFecha.value) {
+    var hoy = new Date();
+    var hoyISO = hoy.getFullYear() + '-' + 
+               String(hoy.getMonth()+1).padStart(2,'0') + '-' + 
+               String(hoy.getDate()).padStart(2,'0');
+    inputFecha.value = hoyISO;
+  }
+  
+  // Cargar historial
+  await cargarHistorial(inputFecha ? inputFecha.value : fechaISO);
+};
+
+// Cargar y mostrar el historial
+async function cargarHistorial(fechaISO) {
+  var contenedor = document.getElementById("contenidoHistorial");
+  if (!contenedor) return;
+  
+  contenedor.innerHTML = '<div class="loading">Cargando historial...</div>';
+  
+  try {
+    if (!DB.getVentasAgrupadasPorFactura) {
+      contenedor.innerHTML = '<div class="error">Función no disponible</div>';
+      return;
+    }
+    
+    var facturas = await DB.getVentasAgrupadasPorFactura(fechaISO);
+    
+    if (facturas.length === 0) {
+      contenedor.innerHTML = '<div class="info">No hay ventas para esta fecha</div>';
+      return;
+    }
+    
+    // Renderizar historial
+    var html = "";
+    
+    for (var i = 0; i < facturas.length; i++) {
+      var f = facturas[i];
+      var esSynced = f.synced === 1;
+      var estadoClass = esSynced ? "synced" : "pendiente";
+      var estadoTexto = esSynced ? "✅ Sincronizado" : "⚠️ Pendiente";
+      
+      html += '<div class="historial-factura ' + estadoClass + '">';
+      html += '<div class="historial-factura-header">';
+      html += '<div class="historial-factura-info">';
+      html += '<span class="historial-factura-id">Factura: ' + f.facturaId + '</span>';
+      html += '<span class="historial-factura-fecha">' + (f.fechaHora || "") + '</span>';
+      html += '</div>';
+      html += '<div class="historial-factura-estado">';
+      html += '<span class="estado-badge ' + estadoClass + '">' + estadoTexto + '</span>';
+      
+      // Botón deshacer (solo si NO está sincronizado)
+      if (!esSynced) {
+        html += '<button class="btn-deshacer" onclick="deshacerVentaConfirmar(\'' + f.facturaId.replace(/'/g, "\\'") + '\')" title="Deshacer venta">↩️ Deshacer</button>';
+      } else {
+        html += '<button class="btn-deshacer" disabled title="No se puede deshacer una venta sincronizada">↩️ Deshacer</button>';
+      }
+      
+      html += '</div>';
+      html += '</div>';
+      
+      // Lista de productos
+      html += '<div class="historial-productos">';
+      html += '<table class="historial-tabla">';
+      html += '<thead><tr><th>Producto</th><th>Cant</th><th>P. Unit</th><th>Subtotal</th></tr></thead>';
+      html += '<tbody>';
+      
+      for (var j = 0; j < f.productos.length; j++) {
+        var p = f.productos[j];
+        html += '<tr>';
+        html += '<td>' + (p.nombre || "") + '</td>';
+        html += '<td class="text-center">' + formatearNumero(p.cantidad) + '</td>';
+        html += '<td class="text-right">' + formatearMoneda(p.precio) + '</td>';
+        html += '<td class="text-right">' + formatearMoneda(p.subtotal) + '</td>';
+        html += '</tr>';
+      }
+      
+      html += '</tbody></table>';
+      html += '</div>'; // cierra historial-productos
+      
+      // Totales
+      html += '<div class="historial-factura-total">';
+      html += '<span>Total: ' + formatearMoneda(f.total) + '</span>';
+      html += '<span>';
+      if (f.efectivo > 0) html += 'Ef: ' + formatearMoneda(f.efectivo) + ' ';
+      if (f.transferencia > 0) html += 'Trans: ' + formatearMoneda(f.transferencia);
+      html += '</span>';
+      html += '</div>';
+      
+      html += '</div>'; // cierra historial-factura
+    }
+    
+    contenedor.innerHTML = html;
+    
+  } catch (error) {
+    console.error("❌ Error cargando historial:", error);
+    contenedor.innerHTML = '<div class="error">Error al cargar historial</div>';
+  }
+}
+
+// Confirmar y deshacer venta
+window.deshacerVentaConfirmar = async function(facturaId) {
+  if (!confirm("¿Estás seguro de deshacer esta venta?\n\nSe revertirán los cambios en el stock.")) {
+    return;
+  }
+  
+  try {
+    mostrarMensaje("Deshaciendo venta...", "info");
+    
+    if (!DB.deshacerVenta) {
+      mostrarMensaje("Función no disponible", "error");
+      return;
+    }
+    
+    var resultado = await DB.deshacerVenta(facturaId);
+    
+    if (resultado.success) {
+      mostrarMensaje("✅ Venta deshecha correctamente", "exito", 3000);
+      
+      // Recargar productos para reflejar cambios en stock
+      await cargarProductos();
+      
+      // Recargar historial
+      var inputFecha = document.getElementById("inputFechaHistorial");
+      if (inputFecha) {
+        await cargarHistorial(inputFecha.value);
+      }
+      
+      // Actualizar panel de estado
+      await actualizarPanelEstado();
+      
+    } else {
+      mostrarMensaje("❌ " + (resultado.error || "Error deshaciendo venta"), "error");
+    }
+    
+  } catch (error) {
+    console.error("❌ Error deshaciendo venta:", error);
+    mostrarMensaje("Error: " + error.message, "error");
+  }
+};
+
+// Cerrar modal historial
+function cerrarModalHistorial() {
+  var modalHistorial = document.getElementById("modalHistorial");
+  if (modalHistorial) {
+    modalHistorial.classList.add("hidden");
+  }
+}
+
+// Event listeners para historial
+document.addEventListener("DOMContentLoaded", function() {
+  // Botón cerrar
+  var cerrarBtn = document.getElementById("modalCerrarHistorial");
+  if (cerrarBtn) {
+    cerrarBtn.addEventListener("click", cerrarModalHistorial);
+  }
+  
+  // Cerrar al hacer clic fuera
+  var modalH = document.getElementById("modalHistorial");
+  if (modalH) {
+    modalH.addEventListener("click", function(e) {
+      if (e.target === modalH) cerrarModalHistorial();
+    });
+  }
+  
+  // Selector de fecha para historial
+  var inputFechaHistorial = document.getElementById("inputFechaHistorial");
+  if (inputFechaHistorial) {
+    inputFechaHistorial.addEventListener("change", function(e) {
+      var fechaSeleccionada = e.target.value;
+      if (fechaSeleccionada) {
+        cargarHistorial(fechaSeleccionada);
+      }
+    });
+  }
+});
+
+// ============================================
 // SINCRONIZAR VENTAS OFFLINE + CARGAR PRODUCTOS
 // ============================================
 window.sincronizar = async function() {

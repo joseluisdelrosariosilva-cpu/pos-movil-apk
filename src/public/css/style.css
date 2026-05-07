@@ -1116,3 +1116,135 @@ body {
     line-height: 1.25;
   }
 }
+
+/* ===== HISTORIAL DE VENTAS ===== */
+
+.historial-contenido {
+  padding: 10px;
+}
+
+.historial-factura {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-left: 4px solid #ccc;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.historial-factura.synced {
+  border-left-color: #4caf50;
+}
+
+.historial-factura.pendiente {
+  border-left-color: #ff9800;
+}
+
+.historial-factura-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.historial-factura-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.historial-factura-id {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.historial-factura-fecha {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.historial-factura-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.estado-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.estado-badge.synced {
+  background-color: #4caf50;
+  color: white;
+}
+
+.estado-badge.pendiente {
+  background-color: #ff9800;
+  color: white;
+}
+
+.btn-deshacer {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: #f44336;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-deshacer:hover:not(:disabled) {
+  background-color: #d32f2f;
+}
+
+.btn-deshacer:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.historial-productos {
+  margin: 10px 0;
+}
+
+.historial-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.historial-tabla th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid #ddd;
+  font-weight: bold;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.historial-tabla td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.historial-factura-total {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  font-weight: bold;
+  font-size: 14px;
+}

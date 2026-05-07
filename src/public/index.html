@@ -19,11 +19,12 @@
            ⋮
          </button>
           <div id="menuDesplegable" class="menu-desplegable hidden">
-            <button onclick="sincronizar()">🔄 Sincronizar</button>
-            <button onclick="procesarMerma()">📉 Merma</button>
-            <button onclick="mostrarResumen()">📊 Resumen</button>
-            <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
-          </div>
+             <button onclick="sincronizar()">🔄 Sincronizar</button>
+             <button onclick="procesarMerma()">📉 Merma</button>
+             <button onclick="mostrarResumen()">📊 Resumen</button>
+             <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
+             <button onclick="mostrarHistorialVentas()">📋 Historial</button>
+           </div>
        </div>
     </header>
 
@@ -163,6 +164,28 @@
 </div>
 
 <!-- Modal para Nuevo Producto -->
+<!-- Modal para Historial de Ventas -->
+<div id="modalHistorial" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalHistorialTitulo">
+  <div class="modal-card" style="max-width: 500px;">
+    <h2 id="modalHistorialTitulo">📋 Historial de Ventas</h2>
+    
+    <!-- Selector de fecha -->
+    <div class="resumen-fecha-selector" style="margin-bottom: 15px;">
+      <label for="inputFechaHistorial" style="margin-right: 10px;">📅 Fecha:</label>
+      <input type="date" id="inputFechaHistorial" value="">
+    </div>
+    
+    <!-- Lista de ventas agrupadas -->
+    <div id="contenidoHistorial" class="historial-contenido" style="max-height: 60vh; overflow-y: auto;">
+      <div class="loading">Cargando historial...</div>
+    </div>
+    
+    <div class="modal-actions" style="display: flex; justify-content: center; margin-top: 15px;">
+      <button type="button" id="modalCerrarHistorial" class="modal-btn modal-btn-primario">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div id="modalNuevoProducto" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalNuevoProductoTitulo">
   <div class="modal-card">
     <h2 id="modalNuevoProductoTitulo">➕ Nuevo Producto</h2>
