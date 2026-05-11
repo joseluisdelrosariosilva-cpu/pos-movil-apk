@@ -24,8 +24,9 @@
               <button onclick="mostrarResumen()">📊 Resumen</button>
               <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
               <button onclick="mostrarAbastecer()">📦 Abastecer</button>
-              <button onclick="mostrarHistorialVentas()">📋 Historial</button>
-            </div>
+               <button onclick="mostrarHistorialVentas()">📋 Historial</button>
+               <button onclick="mostrarProteccion()">🔒 Protección</button>
+             </div>
        </div>
     </header>
 
@@ -262,6 +263,86 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelSync" class="modal-btn modal-btn-secundario">Cancelar</button>
       <button type="button" id="btnManualIP" class="modal-btn modal-btn-primario">IP Manual</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PROTECCIÓN: PANTALLA DE BLOQUEO (se muestra si NO está activado) ===== -->
+<div id="proteccionBloqueo" class="proteccion-overlay">
+  <div class="proteccion-card">
+    <div class="proteccion-icono">🔒</div>
+    <h1 class="proteccion-titulo">Dispositivo no autorizado</h1>
+    <p class="proteccion-descripcion">
+      Este dispositivo no está activado.<br>
+      Enviá el ID de abajo al administrador para obtener la clave de activación.
+    </p>
+
+    <!-- ID del dispositivo -->
+    <div class="proteccion-id-group">
+      <label class="proteccion-label">ID del dispositivo</label>
+      <div class="proteccion-id-wrapper">
+        <code id="proteccionDeviceId" class="proteccion-id">---</code>
+        <button id="btnCopiarId" class="proteccion-btn-copiar" onclick="copiarDeviceId()" title="Copiar ID">📋</button>
+      </div>
+      <p class="proteccion-ayuda">Tocá el ID para copiarlo</p>
+    </div>
+
+    <!-- Clave de activación -->
+    <div class="proteccion-key-group">
+      <label class="proteccion-label">Clave de activación</label>
+      <input type="text" id="proteccionClaveInput" class="proteccion-input" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19" autocomplete="off" spellcheck="false">
+      <p id="proteccionError" class="proteccion-error hidden">✕ Clave incorrecta</p>
+    </div>
+
+    <!-- Botón activar -->
+    <button id="btnActivar" class="proteccion-btn" onclick="ejecutarActivacion()">
+      🔓 Activar dispositivo
+    </button>
+
+    <!-- Estados -->
+    <div id="proteccionCargando" class="proteccion-cargando hidden">
+      <div class="proteccion-spinner"></div>
+      <span>Verificando clave...</span>
+    </div>
+    <div id="proteccionExito" class="proteccion-exito hidden">
+      <div class="proteccion-exito-icono">✅</div>
+      <span>Dispositivo activado correctamente</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL DE PROTECCIÓN (menú, cuando ya está activado) ===== -->
+<div id="modalProteccion" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalProteccionTitulo">
+  <div class="modal-card" style="max-width: 480px;">
+    <h2 id="modalProteccionTitulo">🔒 Protección del dispositivo</h2>
+    <p class="modal-mensaje" style="margin-bottom: 16px;">
+      Estado: <strong id="modalProteccionEstado" style="color: var(--success);">Activado</strong>
+    </p>
+
+    <!-- ID del dispositivo -->
+    <div class="form-group">
+      <label>ID del dispositivo</label>
+      <div style="display: flex; gap: 8px; align-items: stretch;">
+        <input type="text" id="modalProteccionDeviceId" readonly class="input-readonly" style="flex: 1; padding: 16px 20px; background: var(--bg-input); border: none; border-radius: 40px; color: var(--text-primary); font-family: monospace; font-size: 14px;">
+        <button class="modal-btn modal-btn-primario" style="padding: 12px 20px; flex-shrink: 0; border-radius: 40px;" onclick="copiarModalDeviceId()">📋 Copiar</button>
+      </div>
+    </div>
+
+    <!-- Cambiar clave -->
+    <div class="form-group">
+      <label>Nueva clave de activación</label>
+      <input type="text" id="modalProteccionNuevaClave" class="proteccion-input" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19" autocomplete="off" spellcheck="false" style="width: 100%; padding: 16px 20px; background: var(--bg-input); border: none; border-radius: 40px; color: var(--text-primary); font-family: monospace; font-size: 16px; box-sizing: border-box;">
+    </div>
+    <p id="modalProteccionError" class="proteccion-error hidden" style="margin-bottom: 12px;">✕ Clave incorrecta</p>
+
+    <div class="modal-actions" style="grid-template-columns: 1fr 1fr;">
+      <button type="button" id="modalProteccionCerrar" class="modal-btn modal-btn-secundario" onclick="cerrarModalProteccion()">Cerrar</button>
+      <button type="button" id="modalProteccionActivar" class="modal-btn modal-btn-primario" onclick="ejecutarReactivacion()">Re-activar</button>
+    </div>
+
+    <div id="modalProteccionCargando" class="proteccion-cargando hidden" style="margin-top: 12px;">
+      <div class="proteccion-spinner"></div>
+      <span>Verificando clave...</span>
     </div>
   </div>
 </div>

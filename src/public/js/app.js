@@ -1426,6 +1426,38 @@ btnPagar.addEventListener("click", finalizarVenta);
 document.addEventListener("DOMContentLoaded", async function() {
   console.log("🚀 App iniciada");
   
+  // ===== SISTEMA DE ACTIVACIÓN =====
+  // Verificar si el dispositivo está activado
+  var activado = false;
+  if (DB.isActivated) {
+    activado = await DB.isActivated();
+  }
+  console.log("🔐 [Activacion] Dispositivo activado:", activado);
+
+  var proteccionBloqueo = document.getElementById("proteccionBloqueo");
+
+  if (!activado) {
+    // Mostrar pantalla de bloqueo
+    if (proteccionBloqueo) {
+      proteccionBloqueo.classList.remove("hidden");
+    }
+
+    // Generar y mostrar el Device ID
+    if (DB.generateDeviceId) {
+      var deviceId = await DB.generateDeviceId();
+      var idEl = document.getElementById("proteccionDeviceId");
+      if (idEl) idEl.textContent = deviceId;
+    }
+
+    // NO inicializar el resto de la app
+    return;
+  } else {
+    // Ocultar pantalla de bloqueo
+    if (proteccionBloqueo) {
+      proteccionBloqueo.classList.add("hidden");
+    }
+  }
+  
   // Inicializar SQLite solo en APK
   if (window.Capacitor && window.Capacitor.isNativePlatform()) {
     dbInicializado = await DB.initDatabase();
@@ -2203,6 +2235,231 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   });
+});
+
+// ============================================
+// SISTEMA DE ACTIVACIÓN DE DISPOSITIVOS
+// ============================================
+
+// Mostrar modal de protección (desde el menú)
+window.mostrarProteccion = async function() {
+  var menu = document.getElementById("menuDesplegable");
+  if (menu) menu.classList.add("hidden");
+
+  var modal = document.getElementById("modalProteccion");
+  if (!modal) return;
+
+  // Cargar Device ID en el modal
+  if (DB.generateDeviceId) {
+    var deviceId = await DB.generateDeviceId();
+    var idEl = document.getElementById("modalProteccionDeviceId");
+    if (idEl) idEl.value = deviceId;
+  }
+
+  // Limpiar campos
+  var claveInput = document.getElementById("modalProteccionNuevaClave");
+  if (claveInput) claveInput.value = "";
+  var errorEl = document.getElementById("modalProteccionError");
+  if (errorEl) errorEl.classList.add("hidden");
+  var cargandoEl = document.getElementById("modalProteccionCargando");
+  if (cargandoEl) cargandoEl.classList.add("hidden");
+
+  modal.classList.remove("hidden");
+};
+
+// Cerrar modal de protección
+window.cerrarModalProteccion = function() {
+  var modal = document.getElementById("modalProteccion");
+  if (modal) modal.classList.add("hidden");
+};
+
+// Copiar Device ID desde la pantalla de bloqueo
+window.copiarDeviceId = async function() {
+  var idEl = document.getElementById("proteccionDeviceId");
+  if (!idEl) return;
+
+  try {
+    await navigator.clipboard.writeText(idEl.textContent);
+    mostrarMensaje("✅ ID copiado al portapapeles", "exito", 2000);
+  } catch (e) {
+    // Fallback: seleccionar el texto
+    var range = document.createRange();
+    range.selectNodeContents(idEl);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    mostrarMensaje("📋 Seleccioná el ID y copialo", "info", 2000);
+  }
+};
+
+// Copiar Device ID desde el modal
+window.copiarModalDeviceId = async function() {
+  var inputEl = document.getElementById("modalProteccionDeviceId");
+  if (!inputEl) return;
+
+  try {
+    await navigator.clipboard.writeText(inputEl.value);
+    mostrarMensaje("✅ ID copiado al portapapeles", "exito", 2000);
+  } catch (e) {
+    inputEl.select();
+    mostrarMensaje("📋 Seleccioná el ID y copialo", "info", 2000);
+  }
+};
+
+// ============================================
+// EJECUTAR ACTIVACIÓN (desde pantalla de bloqueo)
+// ============================================
+window.ejecutarActivacion = async function() {
+  var claveInput = document.getElementById("proteccionClaveInput");
+  var btnActivar = document.getElementById("btnActivar");
+  var errorEl = document.getElementById("proteccionError");
+  var cargandoEl = document.getElementById("proteccionCargando");
+  var exitoEl = document.getElementById("proteccionExito");
+  var idEl = document.getElementById("proteccionDeviceId");
+
+  if (!claveInput || !btnActivar || !errorEl || !cargandoEl || !exitoEl) return;
+
+  var clave = claveInput.value.trim();
+  if (!clave) {
+    errorEl.textContent = "✕ Ingresá la clave de activación";
+    errorEl.classList.remove("hidden");
+    return;
+  }
+
+  // Ocultar error previo
+  errorEl.classList.add("hidden");
+
+  // Mostrar cargando
+  btnActivar.disabled = true;
+  cargandoEl.classList.remove("hidden");
+
+  try {
+    var valida = await DB.verificarClave(clave);
+
+    if (valida) {
+      // Guardar activación permanente
+      await DB.guardarActivacion();
+
+      // Mostrar éxito
+      cargandoEl.classList.add("hidden");
+      exitoEl.classList.remove("hidden");
+
+      // Recargar la app después de 1.5s (ocultar bloqueo, mostrar app)
+      setTimeout(function() {
+        location.reload();
+      }, 1500);
+    } else {
+      cargandoEl.classList.add("hidden");
+      btnActivar.disabled = false;
+      errorEl.textContent = "✕ Clave incorrecta. Verificá con el administrador.";
+      errorEl.classList.remove("hidden");
+      claveInput.value = "";
+      claveInput.focus();
+    }
+  } catch (e) {
+    console.error("❌ [Activacion] Error:", e);
+    cargandoEl.classList.add("hidden");
+    btnActivar.disabled = false;
+    errorEl.textContent = "✕ Error al verificar: " + e.message;
+    errorEl.classList.remove("hidden");
+  }
+};
+
+// ============================================
+// EJECUTAR RE-ACTIVACIÓN (desde modal, ya activado)
+// ============================================
+window.ejecutarReactivacion = async function() {
+  var claveInput = document.getElementById("modalProteccionNuevaClave");
+  var errorEl = document.getElementById("modalProteccionError");
+  var cargandoEl = document.getElementById("modalProteccionCargando");
+  var btnReactivar = document.getElementById("modalProteccionActivar");
+
+  if (!claveInput || !errorEl || !cargandoEl || !btnReactivar) return;
+
+  var clave = claveInput.value.trim();
+  if (!clave) {
+    errorEl.textContent = "✕ Ingresá la clave de activación";
+    errorEl.classList.remove("hidden");
+    return;
+  }
+
+  errorEl.classList.add("hidden");
+  btnReactivar.disabled = true;
+  cargandoEl.classList.remove("hidden");
+
+  try {
+    var valida = await DB.verificarClave(clave);
+
+    if (valida) {
+      await DB.guardarActivacion();
+      cargandoEl.classList.add("hidden");
+      mostrarMensaje("✅ Dispositivo re-activado correctamente", "exito", 3000);
+      cerrarModalProteccion();
+    } else {
+      cargandoEl.classList.add("hidden");
+      btnReactivar.disabled = false;
+      errorEl.textContent = "✕ Clave incorrecta";
+      errorEl.classList.remove("hidden");
+      claveInput.value = "";
+      claveInput.focus();
+    }
+  } catch (e) {
+    console.error("❌ [Activacion] Error:", e);
+    cargandoEl.classList.add("hidden");
+    btnReactivar.disabled = false;
+    errorEl.textContent = "✕ Error: " + e.message;
+    errorEl.classList.remove("hidden");
+  }
+};
+
+// ============================================
+// AUTO-FORMATO DE CLAVE (agrega guiones automáticos)
+// ============================================
+document.addEventListener("DOMContentLoaded", function() {
+  var inputs = document.querySelectorAll(".proteccion-input");
+  inputs.forEach(function(input) {
+    input.addEventListener("input", function(e) {
+      var val = this.value.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+      var formatted = "";
+      for (var i = 0; i < val.length && i < 16; i++) {
+        if (i > 0 && i % 4 === 0) formatted += "-";
+        formatted += val[i];
+      }
+      this.value = formatted;
+    });
+  });
+});
+
+// Cerrar modal de protección al hacer clic fuera
+document.addEventListener("DOMContentLoaded", function() {
+  var modalProteccion = document.getElementById("modalProteccion");
+  if (modalProteccion) {
+    modalProteccion.addEventListener("click", function(e) {
+      if (e.target === modalProteccion) cerrarModalProteccion();
+    });
+  }
+
+  // Enter en el input de clave de bloqueo → activar
+  var bloqueoInput = document.getElementById("proteccionClaveInput");
+  if (bloqueoInput) {
+    bloqueoInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        ejecutarActivacion();
+      }
+    });
+  }
+
+  // Enter en el input de clave del modal → reactivar
+  var modalInput = document.getElementById("modalProteccionNuevaClave");
+  if (modalInput) {
+    modalInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        ejecutarReactivacion();
+      }
+    });
+  }
 });
 
 

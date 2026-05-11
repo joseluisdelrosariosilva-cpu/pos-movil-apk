@@ -1848,6 +1848,224 @@ async function deshacerVenta(facturaId) {
 }
 
 // ============================================
+// SISTEMA DE ACTIVACIÓN DE DISPOSITIVOS
+// ============================================
+// Protege el acceso a la app: el dispositivo debe
+// ser autorizado mediante una clave generada desde VBA.
+// ============================================
+
+// Constante maestra (DEBE SER IDÉNTICA EN JS Y VBA)
+const MASTER_SALT = "GestionPlus2024!";
+
+// Clave de localStorage para el estado de activación
+const ACTIVATION_KEY = "gplus_device_activated";
+const DEVICE_ID_KEY = "gplus_device_id_cache";
+
+// ============================================
+// GENERAR ID DE DISPOSITIVO (ofuscado)
+// Combina info del hardware + salt persistente
+// Devuelve un string hexadecimal
+// ============================================
+async function generateDeviceId() {
+  // Verificar si ya tenemos uno cacheado (para no regenerar en cada carga)
+  var cached = localStorage.getItem(DEVICE_ID_KEY);
+  if (cached) return cached;
+
+  var model = "unknown";
+  var osVersion = "unknown";
+  var platform = "unknown";
+  var uuid = "unknown";
+
+  // Si estamos en APK real, obtener info del dispositivo
+  if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+    var devicePlugin = null;
+    // Capacitor 8: plugins accesibles via Capacitor.Plugins
+    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Device) {
+      devicePlugin = window.Capacitor.Plugins.Device;
+    }
+
+    if (devicePlugin && typeof devicePlugin.getInfo === 'function') {
+      try {
+        var info = await devicePlugin.getInfo();
+        model = info.model || model;
+        osVersion = info.osVersion || osVersion;
+        platform = info.platform || platform;
+      } catch (e) {
+        console.warn("⚠️ [DeviceID] Error leyendo Device.getInfo:", e.message);
+      }
+    }
+
+    if (devicePlugin && typeof devicePlugin.getId === 'function') {
+      try {
+        var idResult = await devicePlugin.getId();
+        uuid = idResult.uuid || uuid;
+      } catch (e) {
+        console.warn("⚠️ [DeviceID] Error leyendo Device.getId:", e.message);
+      }
+    }
+  }
+
+  // Generar salt persistente (se genera UNA VEZ y queda para siempre)
+  var salt = localStorage.getItem("gplus_device_salt");
+  if (!salt) {
+    var arr = [];
+    for (var si = 0; si < 8; si++) {
+      arr.push(Math.floor(Math.random() * 36).toString(36));
+    }
+    salt = arr.join("") + Date.now().toString(36);
+    try {
+      localStorage.setItem("gplus_device_salt", salt);
+    } catch (e) {
+      salt = "fallback_" + Date.now();
+    }
+  }
+
+  // Combinar todo en un string crudo
+  var raw = model + "|" + osVersion + "|" + platform + "|" + uuid + "|" + salt;
+
+  // Ofuscar: transformación irreversible para el ID mostrado
+  var obfuscated = "";
+  for (var i = 0; i < raw.length; i++) {
+    var code = raw.charCodeAt(i);
+    code = ((code * 7) ^ 0x3B) & 0xFF;
+    var hex = code.toString(16);
+    if (hex.length < 2) hex = "0" + hex;
+    obfuscated += hex;
+  }
+
+  var deviceId = obfuscated.toUpperCase();
+
+  // Cachear para no regenerar
+  try {
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  } catch (e) {}
+
+  console.log("🔐 [DeviceID] Generado:", deviceId);
+  return deviceId;
+}
+
+// ============================================
+// COMPUTAR CLAVE DE ACTIVACIÓN
+// ALGORITMO IDÉNTICO AL DE VBA
+// ============================================
+function computeActivationKey(deviceId) {
+  // 1. Combinar con salt maestra
+  var combined = deviceId + MASTER_SALT;
+
+  // 2. Transformar cada carácter
+  var transformed = "";
+  for (var i = 0; i < combined.length; i++) {
+    var code = combined.charCodeAt(i);
+    // XOR con valor dependiente de posición
+    code = (code ^ (0x2A + i)) & 0xFF;
+    // Rotación derecha 2 bits
+    code = ((code >> 2) | ((code & 3) << 6)) & 0xFF;
+
+    transformed += String.fromCharCode(code);
+  }
+
+  // 3. Convertir a hexadecimal
+  var hexResult = "";
+  for (var i = 0; i < transformed.length; i++) {
+    var h = transformed.charCodeAt(i).toString(16);
+    if (h.length < 2) h = "0" + h;
+    hexResult += h;
+  }
+
+  // 4. Tomar primeros 16 caracteres hex y formatear como XXXX-XXXX-XXXX-XXXX
+  var trimmed = hexResult.substring(0, 16).toUpperCase();
+  var formatted = "";
+  for (var i = 0; i < trimmed.length; i += 4) {
+    if (formatted.length > 0) formatted += "-";
+    formatted += trimmed.substring(i, i + 4);
+  }
+
+  return formatted;
+}
+
+// ============================================
+// VERIFICAR CLAVE DE ACTIVACIÓN
+// ============================================
+async function verificarClave(claveIngresada) {
+  var deviceId = await generateDeviceId();
+  var claveEsperada = computeActivationKey(deviceId);
+
+  console.log("🔐 [Activacion] Clave esperada:", claveEsperada);
+  console.log("🔐 [Activacion] Clave ingresada:", claveIngresada);
+
+  return claveIngresada.trim().toUpperCase() === claveEsperada;
+}
+
+// ============================================
+// GUARDAR ACTIVACIÓN PERMANENTE
+// ============================================
+async function guardarActivacion() {
+  // Guardar en localStorage
+  try {
+    localStorage.setItem(ACTIVATION_KEY, "true");
+  } catch (e) {
+    console.error("❌ [Activacion] Error guardando en localStorage:", e);
+  }
+
+  // Guardar también en SQLite si está disponible (doble persistencia)
+  if (storageMode === "sqlite" && db) {
+    try {
+      await db.execute(
+        "INSERT OR REPLACE INTO config (clave, valor, timestamp) VALUES (?, ?, ?)",
+        [ACTIVATION_KEY, "true", Date.now()]
+      );
+    } catch (e) {
+      console.warn("⚠️ [Activacion] No se pudo guardar en SQLite:", e.message);
+    }
+  }
+}
+
+// ============================================
+// VERIFICAR SI EL DISPOSITIVO ESTÁ ACTIVADO
+// ============================================
+async function isActivated() {
+  // 1. Revisar localStorage primero (rápido)
+  var localState = localStorage.getItem(ACTIVATION_KEY);
+  if (localState === "true") return true;
+
+  // 2. Revisar SQLite si está disponible
+  if (storageMode === "sqlite" && db) {
+    try {
+      var result = await db.execute(
+        "SELECT valor FROM config WHERE clave = ?",
+        [ACTIVATION_KEY]
+      );
+      if (result.values && result.values.length > 0 && result.values[0].valor === "true") {
+        // Sincronizar a localStorage
+        try { localStorage.setItem(ACTIVATION_KEY, "true"); } catch (e) {}
+        return true;
+      }
+    } catch (e) {
+      console.warn("⚠️ [Activacion] Error leyendo SQLite:", e.message);
+    }
+  }
+
+  return false;
+}
+
+// ============================================
+// LIMPIAR ACTIVACIÓN (para pruebas / re-emitir)
+// ============================================
+async function limpiarActivacion() {
+  try {
+    localStorage.removeItem(ACTIVATION_KEY);
+    localStorage.removeItem(DEVICE_ID_KEY);
+    localStorage.removeItem("gplus_device_salt");
+  } catch (e) {}
+
+  if (storageMode === "sqlite" && db) {
+    try {
+      await db.execute("DELETE FROM config WHERE clave = ?", [ACTIVATION_KEY]);
+    } catch (e) {}
+  }
+}
+
+// ============================================
 // EXPORTAR COMO MÓDULO GLOBAL
 // ============================================
 window.Database = {
@@ -1889,6 +2107,13 @@ window.Database = {
   // Funciones para historial de ventas
   getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
   deshacerVenta: deshacerVenta,
+  // Funciones de activación de dispositivos
+  generateDeviceId: generateDeviceId,
+  computeActivationKey: computeActivationKey,
+  verificarClave: verificarClave,
+  guardarActivacion: guardarActivacion,
+  isActivated: isActivated,
+  limpiarActivacion: limpiarActivacion,
 };
 
 console.log("📦 Database module loaded");
