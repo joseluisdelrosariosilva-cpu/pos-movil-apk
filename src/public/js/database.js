@@ -1947,13 +1947,20 @@ async function generateDeviceId() {
 // ============================================
 // COMPUTAR CLAVE DE ACTIVACIÓN
 // ALGORITMO IDÉNTICO AL DE VBA
+//
+// ESTRATEGIA: acumular TODOS los caracteres transformados
+// en un buffer fijo de 8 bytes con mezcla cruzada.
+// Así, un cambio en CUALQUIER parte del input (no solo al inicio)
+// modifica TODOS los bytes del buffer final.
 // ============================================
 function computeActivationKey(deviceId) {
   // 1. Combinar con salt maestra
   var combined = deviceId + MASTER_SALT;
 
-  // 2. Transformar cada carácter
-  var transformed = "";
+  // 2. Buffer fijo de 8 bytes (→ 16 hex chars → XXXX-XXXX-XXXX-XXXX)
+  var buf = [0, 0, 0, 0, 0, 0, 0, 0];
+
+  // 3. Procesar CADA carácter, mezclando en múltiples posiciones del buffer
   for (var i = 0; i < combined.length; i++) {
     var code = combined.charCodeAt(i);
     // XOR con valor dependiente de posición
@@ -1961,26 +1968,34 @@ function computeActivationKey(deviceId) {
     // Rotación derecha 2 bits
     code = ((code >> 2) | ((code & 3) << 6)) & 0xFF;
 
-    transformed += String.fromCharCode(code);
+    // Mezcla cruzada: cada byte afecta 3 posiciones del buffer
+    buf[i % 8] = (buf[i % 8] ^ code) & 0xFF;
+    buf[(i + 3) % 8] = (buf[(i + 3) % 8] + code) & 0xFF;
+    buf[(i + 7) % 8] = (buf[(i + 7) % 8] ^ ((code << 1) & 0xFF)) & 0xFF;
   }
 
-  // 3. Convertir a hexadecimal
+  // 4. Mezcla final: cada byte se mezcla con su vecino
+  //    para que cambios mínimos tengan efecto de avalancha
+  for (var i = 0; i < 8; i++) {
+    buf[i] = (buf[i] ^ buf[(i + 1) % 8]) & 0xFF;
+  }
+
+  // 5. Convertir buffer a hex y formatear
   var hexResult = "";
-  for (var i = 0; i < transformed.length; i++) {
-    var h = transformed.charCodeAt(i).toString(16);
+  for (var i = 0; i < buf.length; i++) {
+    var h = buf[i].toString(16);
     if (h.length < 2) h = "0" + h;
     hexResult += h;
   }
 
-  // 4. Tomar primeros 16 caracteres hex y formatear como XXXX-XXXX-XXXX-XXXX
-  var trimmed = hexResult.substring(0, 16).toUpperCase();
-  var formatted = "";
-  for (var i = 0; i < trimmed.length; i += 4) {
-    if (formatted.length > 0) formatted += "-";
-    formatted += trimmed.substring(i, i + 4);
+  var formatted = hexResult.toUpperCase();
+  var result = "";
+  for (var i = 0; i < formatted.length; i += 4) {
+    if (result.length > 0) result += "-";
+    result += formatted.substring(i, i + 4);
   }
 
-  return formatted;
+  return result;
 }
 
 // ============================================
