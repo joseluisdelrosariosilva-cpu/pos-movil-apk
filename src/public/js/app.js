@@ -121,6 +121,7 @@ async function contarPendientesTotales() {
   var pendientesVentas = 0;
   var pendientesMermas = 0;
   var pendientesEntradaProductos = 0;
+  var pendientesGastos = 0;
   var pendientesAbastecer = 0;
 
   if (DB.contarVentasPendientes) {
@@ -139,7 +140,11 @@ async function contarPendientesTotales() {
     pendientesAbastecer = await DB.contarAbastecerPendientes();
   }
 
-  return pendientesVentas + pendientesMermas + pendientesEntradaProductos + pendientesAbastecer;
+  if (DB.contarGastosPendientes) {
+    pendientesGastos = await DB.contarGastosPendientes();
+  }
+
+  return pendientesVentas + pendientesMermas + pendientesEntradaProductos + pendientesAbastecer + pendientesGastos;
 }
 
 async function actualizarPanelEstado() {
@@ -1165,6 +1170,120 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 // ============================================
+// GASTOS - Mostrar formulario
+// ============================================
+window.mostrarGasto = function() {
+  var menu = document.getElementById("menuDesplegable");
+  if (menu) menu.classList.add("hidden");
+
+  var modal = document.getElementById("modalGasto");
+  if (!modal) return;
+
+  // Poner fecha actual
+  var hoy = new Date();
+  var fechaISO = hoy.getFullYear() + '-' +
+               String(hoy.getMonth()+1).padStart(2,'0') + '-' +
+               String(hoy.getDate()).padStart(2,'0');
+  document.getElementById("gastoFecha").value = fechaISO;
+
+  // Limpiar campos
+  document.getElementById("gastoDescripcion").value = "";
+  document.getElementById("gastoMonto").value = "";
+
+  modal.classList.remove("hidden");
+  document.getElementById("gastoDescripcion").focus();
+};
+
+function cerrarModalGasto() {
+  var modal = document.getElementById("modalGasto");
+  if (modal) modal.classList.add("hidden");
+}
+
+window.confirmarGasto = async function() {
+  var descripcion = document.getElementById("gastoDescripcion").value.trim();
+  var monto = parsearNumero(document.getElementById("gastoMonto").value);
+  var fecha = document.getElementById("gastoFecha").value;
+
+  if (!descripcion) {
+    mostrarMensaje("Ingresá una descripción del gasto", "error");
+    document.getElementById("gastoDescripcion").focus();
+    return;
+  }
+
+  if (monto <= 0) {
+    mostrarMensaje("El monto debe ser mayor a 0", "error");
+    document.getElementById("gastoMonto").focus();
+    return;
+  }
+
+  try {
+    mostrarMensaje("Guardando gasto...", "info");
+
+    var guardado = await DB.guardarGastoOffline({
+      fecha: fecha,
+      descripcion: descripcion,
+      monto: monto
+    });
+
+    if (!guardado) {
+      throw new Error("No se pudo guardar el gasto");
+    }
+
+    cerrarModalGasto();
+
+    // Cambiar a modo offline
+    modoOffline = true;
+
+    // Actualizar contador de pendientes
+    await actualizarPanelEstado();
+    await actualizarIndicadorSync();
+
+    mostrarMensaje(
+      "✅ Gasto registrado: $" + formatearNumero(monto) + " - " + descripcion,
+      "exito",
+      3000
+    );
+
+  } catch (error) {
+    console.error("❌ Error guardando gasto:", error);
+    mostrarMensaje("Error: " + error.message, "error");
+  }
+};
+
+// Event listeners para gastos
+document.addEventListener("DOMContentLoaded", function() {
+  var cancelarBtn = document.getElementById("btnCancelarGasto");
+  if (cancelarBtn) {
+    cancelarBtn.addEventListener("click", cerrarModalGasto);
+  }
+
+  var confirmarBtn = document.getElementById("btnConfirmarGasto");
+  if (confirmarBtn) {
+    confirmarBtn.addEventListener("click", function() {
+      window.confirmarGasto();
+    });
+  }
+
+  var modalGasto = document.getElementById("modalGasto");
+  if (modalGasto) {
+    modalGasto.addEventListener("click", function(e) {
+      if (e.target === modalGasto) cerrarModalGasto();
+    });
+  }
+
+  // Enter en el campo monto → confirmar
+  var montoInput = document.getElementById("gastoMonto");
+  if (montoInput) {
+    montoInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        window.confirmarGasto();
+      }
+    });
+  }
+});
+
+// ============================================
 // GENERAR FACTURA ID PARA MODO OFFLINE
 // Formato: [5 dígitos fecha serial Excel] + [5 dígitos consecutivo]
 // USA LA REFERENCIA DE DATOS.XLSX - no calcula el prefijo
@@ -2019,6 +2138,27 @@ window.sincronizar = async function() {
         console.error("❌ Error sincronizando mermas:", e);
         mensajeSync += " | Error mermas: " + e.message;
         logSyncAPK("Excepción sincronizando mermas: " + e.message, "error");
+      }
+    }
+
+    // 5) Sincronizar gastos SIEMPRE
+    if (DB.sincronizarGastos) {
+      try {
+        logSyncAPK("Sincronizando gastos...");
+        var resultadoGastos = await DB.sincronizarGastos(urlServidor);
+        if (resultadoGastos.success && resultadoGastos.sincronizadas > 0) {
+          agregarResumenOk(resultadoGastos.sincronizadas + " gastos");
+          logSyncAPK("Gastos sincronizados: " + resultadoGastos.sincronizadas);
+        } else if (!resultadoGastos.success) {
+          overallSuccess = false;
+          mensajeSync += " | Error gastos: " + resultadoGastos.error;
+          logSyncAPK("Error sincronizando gastos: " + resultadoGastos.error, "error");
+        }
+      } catch (e) {
+        overallSuccess = false;
+        console.error("❌ Error sincronizando gastos:", e);
+        mensajeSync += " | Error gastos: " + e.message;
+        logSyncAPK("Excepción sincronizando gastos: " + e.message, "error");
       }
     }
 

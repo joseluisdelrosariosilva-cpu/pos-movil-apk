@@ -10,6 +10,7 @@ import resumenRoutes from "./routes/resumen.routes.js";
 import mermasRoutes from "./routes/mermas.routes.js";
 import entradaProductosRoutes from "./routes/entrada-productos.routes.js";
 import abastecimientosRoutes from "./routes/abastecimientos.routes.js";
+import gastosRoutes from "./routes/gastos.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import * as control from "./utils/server-control.js";
 import { validarToken } from "./middlewares/auth.middleware.js";
@@ -72,6 +73,7 @@ app.use("/api", validarToken, resumenRoutes);
 app.use("/api", validarToken, mermasRoutes);
 app.use("/api", validarToken, entradaProductosRoutes);
 app.use("/api", validarToken, abastecimientosRoutes);
+app.use("/api", validarToken, gastosRoutes);
 
 // Ruta de prueba
 app.get("/api/test", validarToken, (req, res) => {

@@ -13,6 +13,7 @@ const LS_KEYS = {
   mermas: "posmovil_mermas_pending",
   entrada_productos: "posmovil_entrada_productos_pending",
   abastecer: "posmovil_abastecer_pending",
+  gastos: "posmovil_gastos_pending",
   config: "posmovil_config",
 };
 
@@ -59,6 +60,7 @@ function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.mermas)) guardarLocal(LS_KEYS.mermas, []);
   if (!localStorage.getItem(LS_KEYS.entrada_productos)) guardarLocal(LS_KEYS.entrada_productos, []);
   if (!localStorage.getItem(LS_KEYS.abastecer)) guardarLocal(LS_KEYS.abastecer, []);
+  if (!localStorage.getItem(LS_KEYS.gastos)) guardarLocal(LS_KEYS.gastos, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
 }
 
@@ -243,6 +245,11 @@ async function initDatabase() {
     // Tabla para abastecer (reabastecer productos existentes - offline)
     await db.execute(
       "CREATE TABLE IF NOT EXISTS abastecer_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
+    );
+
+    // Tabla para gastos offline
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS gastos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, descripcion TEXT, monto REAL, synced INTEGER DEFAULT 0)"
     );
 
     console.log("✅ Base de datos SQLite inicializada");
@@ -1368,6 +1375,170 @@ async function guardarAbastecerOffline(abastecer) {
 }
 
 // ============================================
+// FUNCIONES PARA GASTOS OFFLINE
+// ============================================
+
+// Guardar gasto en SQLite/localStorage
+async function guardarGastoOffline(gasto) {
+  if (!gasto || !gasto.descripcion || !gasto.monto) {
+    return false;
+  }
+
+  var fecha = gasto.fecha || new Date().toISOString().split("T")[0];
+  var monto = Number(gasto.monto) || 0;
+
+  if (storageMode !== "sqlite" || !db) {
+    var actuales = leerLocal(LS_KEYS.gastos, []);
+    actuales.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      fecha: fecha,
+      descripcion: gasto.descripcion,
+      monto: monto,
+      synced: 0,
+    });
+    return guardarLocal(LS_KEYS.gastos, actuales);
+  }
+
+  try {
+    await db.execute(
+      "INSERT INTO gastos_pending (fecha, descripcion, monto, synced) VALUES (?, ?, ?, 0)",
+      [fecha, gasto.descripcion, monto]
+    );
+    console.log("✅ Gasto guardado offline:", gasto.descripcion, "$" + monto);
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando gasto offline:", error);
+    // Fallback a localStorage
+    var actuales2 = leerLocal(LS_KEYS.gastos, []);
+    actuales2.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      fecha: fecha,
+      descripcion: gasto.descripcion,
+      monto: monto,
+      synced: 0,
+    });
+    return guardarLocal(LS_KEYS.gastos, actuales2);
+  }
+}
+
+// Obtener gastos pendientes de sync
+async function getGastosPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
+      return Number(g.synced || 0) === 0;
+    });
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT * FROM gastos_pending WHERE synced = 0 ORDER BY id"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo gastos pendientes:", error);
+    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
+      return Number(g.synced || 0) === 0;
+    });
+  }
+}
+
+// Contar gastos pendientes
+async function contarGastosPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
+      return Number(g.synced || 0) === 0;
+    }).length;
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT COUNT(*) as count FROM gastos_pending WHERE synced = 0"
+    );
+    return result.values ? result.values[0].count : 0;
+  } catch (error) {
+    console.error("❌ Error contando gastos pendientes:", error);
+    return 0;
+  }
+}
+
+// Marcar gastos como sincronizados
+async function marcarGastosSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE gastos_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
+    }
+  } else {
+    var todos = leerLocal(LS_KEYS.gastos, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
+    }
+    for (var x = 0; x < todos.length; x++) {
+      if (idsMap[String(todos[x].id)]) {
+        todos[x].synced = 1;
+      }
+    }
+    guardarLocal(LS_KEYS.gastos, todos);
+  }
+}
+
+// Sincronizar gastos al servidor
+// Acepta opcionalmente la URL del servidor como parámetro
+async function sincronizarGastos(serverUrl) {
+  var pendientes = await getGastosPendientes();
+
+  if (pendientes.length === 0) {
+    return { success: true, sincronizadas: 0 };
+  }
+
+  var url = serverUrl || window.SERVER_URL;
+  if (!url) {
+    return { success: false, error: "No hay servidor configurado para sincronizar gastos" };
+  }
+
+  var gastos = pendientes.map(function(g) {
+    return {
+      fecha: g.fecha,
+      descripcion: g.descripcion,
+      monto: Number(g.monto || 0),
+    };
+  });
+
+  try {
+    var response = await fetch(url + "/api/gastos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-session-token": window.SESSION_TOKEN || "",
+      },
+      body: JSON.stringify({ gastos: gastos }),
+    });
+
+    if (!response.ok) {
+      var errorText = await response.text();
+      throw new Error("HTTP " + response.status + " - " + errorText);
+    }
+
+    var result = await response.json();
+
+    var ids = pendientes.map(function(g) { return g.id; });
+    await marcarGastosSynced(ids);
+
+    console.log("✅ " + gastos.length + " gastos sincronizados");
+    return {
+      success: true,
+      sincronizadas: result.sincronizadas || gastos.length,
+    };
+  } catch (error) {
+    console.error("❌ Error sincronizando gastos:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // AUTO-DESCUBRIR SERVIDOR EN RED LOCAL
 // ============================================
 const SERVIDOR_CACHE_KEY = "servidor_cache";
@@ -2119,6 +2290,11 @@ window.Database = {
   contarAbastecerPendientes: contarAbastecerPendientes,
   getAbastecerPendientes: getAbastecerPendientes,
   sincronizarAbastecer: sincronizarAbastecer,
+  // Funciones para gastos
+  guardarGastoOffline: guardarGastoOffline,
+  getGastosPendientes: getGastosPendientes,
+  contarGastosPendientes: contarGastosPendientes,
+  sincronizarGastos: sincronizarGastos,
   // Funciones para historial de ventas
   getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
   deshacerVenta: deshacerVenta,
