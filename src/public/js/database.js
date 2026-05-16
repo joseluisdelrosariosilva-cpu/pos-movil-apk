@@ -123,7 +123,8 @@ function fechaLocalHoyISO() {
 }
 
 // ============================================
-// LIMPIAR VENTAS ANTIGUAS (más de 30 días y ya sincronizadas)
+// LIMPIAR REGISTROS ANTIGUOS (más de 30 días y ya sincronizados)
+// Limpia ventas, mermas, entrada_productos, abastecer y gastos
 // ============================================
 async function limpiarVentasAntiguas() {
   var ULTIMA_LIMPIEZA_KEY = "posmovil_ultima_limpieza";
@@ -141,24 +142,61 @@ async function limpiarVentasAntiguas() {
   
   try {
     if (storageMode === "sqlite" && db) {
-      await db.execute(
-        "DELETE FROM ventas_pending WHERE synced = 1 AND date(fecha_hora) < ?", 
-        [fechaLimiteISO]
-      );
-      console.log("🗑️ Ventas antiguas eliminadas (antes del " + fechaLimiteISO + ")");
+      // Ventas
+      await db.execute("DELETE FROM ventas_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
+      // Mermas
+      await db.execute("DELETE FROM mermas_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
+      // Entrada de productos
+      await db.execute("DELETE FROM entrada_productos_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
+      // Abastecimientos
+      await db.execute("DELETE FROM abastecer_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
+      // Gastos (usa 'fecha' en vez de 'fecha_hora')
+      await db.execute("DELETE FROM gastos_pending WHERE synced = 1 AND date(fecha) < ?", [fechaLimiteISO]);
+      
+      console.log("🗑️ Registros antiguos eliminados (antes del " + fechaLimiteISO + ")");
     } else {
-      // localStorage: filtrar y guardar solo las recientes
+      // localStorage: filtrar y guardar solo los recientes
+      
+      // Ventas
       var ventas = leerLocal(LS_KEYS.ventas, []);
       var ventasFiltradas = ventas.filter(function(v) {
         var fechaVenta = extraerFechaISO(v.fecha_hora || v.fechaHora);
         return fechaVenta >= fechaLimiteISO || Number(v.synced || 0) === 0;
       });
       guardarLocal(LS_KEYS.ventas, ventasFiltradas);
+      
+      // Mermas
+      var mermas = leerLocal(LS_KEYS.mermas, []);
+      var mermasFiltradas = mermas.filter(function(m) {
+        return extraerFechaISO(m.fecha_hora) >= fechaLimiteISO || Number(m.synced || 0) === 0;
+      });
+      guardarLocal(LS_KEYS.mermas, mermasFiltradas);
+      
+      // Entrada de productos
+      var entradas = leerLocal(LS_KEYS.entrada_productos, []);
+      var entradasFiltradas = entradas.filter(function(e) {
+        return extraerFechaISO(e.fecha_hora) >= fechaLimiteISO || Number(e.synced || 0) === 0;
+      });
+      guardarLocal(LS_KEYS.entrada_productos, entradasFiltradas);
+      
+      // Abastecimientos
+      var abastecimientos = leerLocal(LS_KEYS.abastecer, []);
+      var abastecimientosFiltrados = abastecimientos.filter(function(a) {
+        return extraerFechaISO(a.fecha_hora) >= fechaLimiteISO || Number(a.synced || 0) === 0;
+      });
+      guardarLocal(LS_KEYS.abastecer, abastecimientosFiltrados);
+      
+      // Gastos (usa 'fecha' en vez de 'fecha_hora')
+      var gastos = leerLocal(LS_KEYS.gastos, []);
+      var gastosFiltrados = gastos.filter(function(g) {
+        return extraerFechaISO(g.fecha) >= fechaLimiteISO || Number(g.synced || 0) === 0;
+      });
+      guardarLocal(LS_KEYS.gastos, gastosFiltrados);
     }
     
     localStorage.setItem(ULTIMA_LIMPIEZA_KEY, hoy);
   } catch (error) {
-    console.error("❌ Error limpiando ventas antiguas:", error);
+    console.error("❌ Error limpiando registros antiguos:", error);
   }
 }
 
