@@ -216,6 +216,68 @@ body {
   font-weight: 700;
 }
 
+/* Indicador de que el pill es interactivo */
+#pendientesPill {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+#pendientesPill .estado-label::after {
+  content: " ▼";
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+#pendientesPill.active .estado-label::after {
+  content: " ▲";
+}
+
+/* ===== DESGLOSE DE PENDIENTES ===== */
+.pendientes-breakdown {
+  background: var(--bg-secondary);
+  border: 1px solid #3c3c3c;
+  border-radius: 12px;
+  padding: 6px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.pendientes-breakdown.hidden {
+  display: none;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+}
+
+.breakdown-item + .breakdown-item {
+  border-top: 1px solid #2a2a2a;
+}
+
+.breakdown-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.breakdown-count {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.breakdown-empty {
+  justify-content: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 10px 0;
+}
+
 .btn-sync,
 .btn-resumen,
 .btn-config {
@@ -279,6 +341,34 @@ body {
 .resumen-detalle strong {
   color: var(--text-primary);
   font-size: 16px;
+}
+
+.resumen-gastos {
+  margin-top: -8px;
+  margin-bottom: 20px;
+}
+
+.resumen-gastos-total {
+  border-left: 4px solid #e53935;
+  background: var(--bg-card);
+}
+
+.resumen-gastos-total strong {
+  color: #e53935;
+}
+
+.resumen-gasto-item {
+  border-left: 3px solid #e53935 !important;
+}
+
+.resumen-gasto-item .gasto-descripcion {
+  flex: 1;
+  font-weight: 500;
+}
+
+.resumen-gasto-item .gasto-monto {
+  color: #e53935 !important;
+  font-weight: 600;
 }
 
 .resumen-contenido h3 {

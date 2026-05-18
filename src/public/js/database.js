@@ -678,11 +678,16 @@ async function getResumenOffline(fechaISO) {
     });
 
     if (ventas.length === 0) {
+      // Aún sin ventas, leer gastos del día
+      var gastos = await leerGastosDelDia(fechaFiltro);
+      var totalGastos = gastos.reduce(function(acc, g) { return acc + Number(g.monto || 0); }, 0);
       return {
         totalIngresado: 0,
         efectivo: 0,
         transferencia: 0,
-        productosVendidos: []
+        productosVendidos: [],
+        totalGastos: Math.round(totalGastos * 1000) / 1000,
+        gastos: gastos
       };
     }
 
@@ -732,11 +737,17 @@ async function getResumenOffline(fechaISO) {
     // Ordenar por cantidad descendente
     productosVendidos.sort(function(a, b) { return b.cantidad - a.cantidad; });
 
+    // ---- GASTOS DEL DÍA ----
+    var gastos = await leerGastosDelDia(fechaFiltro);
+    var totalGastos = gastos.reduce(function(acc, g) { return acc + Number(g.monto || 0); }, 0);
+
     return {
       totalIngresado: Math.round(totalIngresado * 1000) / 1000,
       efectivo: Math.round(totalEfectivo * 1000) / 1000,
       transferencia: Math.round(totalTransferencia * 1000) / 1000,
-      productosVendidos: productosVendidos
+      productosVendidos: productosVendidos,
+      totalGastos: Math.round(totalGastos * 1000) / 1000,
+      gastos: gastos
     };
   } catch (error) {
     console.error("❌ Error en getResumenOffline:", error);
@@ -1574,6 +1585,32 @@ async function sincronizarGastos(serverUrl) {
     console.error("❌ Error sincronizando gastos:", error.message);
     return { success: false, error: error.message };
   }
+}
+
+// ============================================
+// LEER GASTOS DEL DÍA DESDE BD LOCAL
+// ============================================
+async function leerGastosDelDia(fecha) {
+  var gastos = [];
+  if (storageMode === "sqlite" && db) {
+    try {
+      var result = await db.execute("SELECT * FROM gastos_pending ORDER BY id");
+      gastos = result.values || [];
+    } catch (e) {
+      gastos = leerLocal(LS_KEYS.gastos, []);
+    }
+  } else {
+    gastos = leerLocal(LS_KEYS.gastos, []);
+  }
+  gastos = gastos.filter(function(g) {
+    return (g.fecha || "").substring(0, 10) === fecha;
+  });
+  return gastos.map(function(g) {
+    return {
+      descripcion: g.descripcion || "",
+      monto: Number(g.monto || 0),
+    };
+  });
 }
 
 // ============================================

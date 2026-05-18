@@ -107,6 +107,8 @@ const modalConfirmar = document.getElementById("modalConfirmar");
 const estadoModoEl = document.getElementById("estadoModo");
 const estadoPendientesEl = document.getElementById("estadoPendientes");
 const estadoUltimaSyncEl = document.getElementById("estadoUltimaSync");
+const pendientesPill = document.getElementById("pendientesPill");
+const pendientesBreakdown = document.getElementById("pendientesBreakdown");
 function logSyncAPK(mensaje, tipo) {
   if (tipo === "error") {
     console.error("📱[SYNC APK]", mensaje);
@@ -117,34 +119,19 @@ function logSyncAPK(mensaje, tipo) {
   }
 }
 
+async function contarPendientesDesglose() {
+  var d = {};
+  d.ventas         = DB.contarVentasPendientes        ? await DB.contarVentasPendientes()        : 0;
+  d.mermas         = DB.contarMermasPendientes        ? await DB.contarMermasPendientes()        : 0;
+  d.entradas       = DB.contarEntradaProductosPendientes ? await DB.contarEntradaProductosPendientes() : 0;
+  d.abastecimientos = DB.contarAbastecerPendientes    ? await DB.contarAbastecerPendientes()     : 0;
+  d.gastos         = DB.contarGastosPendientes        ? await DB.contarGastosPendientes()         : 0;
+  return d;
+}
+
 async function contarPendientesTotales() {
-  var pendientesVentas = 0;
-  var pendientesMermas = 0;
-  var pendientesEntradaProductos = 0;
-  var pendientesGastos = 0;
-  var pendientesAbastecer = 0;
-
-  if (DB.contarVentasPendientes) {
-    pendientesVentas = await DB.contarVentasPendientes();
-  }
-
-  if (DB.contarMermasPendientes) {
-    pendientesMermas = await DB.contarMermasPendientes();
-  }
-
-  if (DB.contarEntradaProductosPendientes) {
-    pendientesEntradaProductos = await DB.contarEntradaProductosPendientes();
-  }
-
-  if (DB.contarAbastecerPendientes) {
-    pendientesAbastecer = await DB.contarAbastecerPendientes();
-  }
-
-  if (DB.contarGastosPendientes) {
-    pendientesGastos = await DB.contarGastosPendientes();
-  }
-
-  return pendientesVentas + pendientesMermas + pendientesEntradaProductos + pendientesAbastecer + pendientesGastos;
+  var d = await contarPendientesDesglose();
+  return d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos;
 }
 
 async function actualizarPanelEstado() {
@@ -156,8 +143,14 @@ async function actualizarPanelEstado() {
 
   if (estadoPendientesEl) {
     try {
-      var pendientes = await contarPendientesTotales();
-      estadoPendientesEl.textContent = String(pendientes);
+      var d = await contarPendientesDesglose();
+      var total = d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos;
+      estadoPendientesEl.textContent = String(total);
+
+      // Si el desglose está abierto, refrescar sin repetir consultas
+      if (pendientesBreakdown && !pendientesBreakdown.classList.contains("hidden")) {
+        actualizarDesgloseDOM(d);
+      }
     } catch (_) {
       estadoPendientesEl.textContent = "-";
     }
@@ -1688,10 +1681,35 @@ function actualizarResumenUI(data) {
   var efectivoEl = document.getElementById("resumenEfectivo");
   var transferenciaEl = document.getElementById("resumenTransferencia");
   var listaEl = document.getElementById("listaProductosResumen");
+  var totalGastosEl = document.getElementById("resumenTotalGastos");
+  var listaGastosEl = document.getElementById("listaGastosResumen");
+  var gastosTitulo = document.getElementById("gastosTitulo");
 
   if (totalEl) totalEl.textContent = formatearMoneda(data.totalIngresado || 0);
   if (efectivoEl) efectivoEl.textContent = formatearMoneda(data.efectivo || 0);
   if (transferenciaEl) transferenciaEl.textContent = formatearMoneda(data.transferencia || 0);
+
+  // Mostrar gastos
+  var totalGastos = data.totalGastos || 0;
+  if (totalGastosEl) totalGastosEl.textContent = formatearMoneda(totalGastos);
+  if (listaGastosEl && gastosTitulo) {
+    var gastos = data.gastos || [];
+    if (gastos.length === 0) {
+      listaGastosEl.innerHTML = "";
+      gastosTitulo.classList.add("hidden");
+    } else {
+      gastosTitulo.classList.remove("hidden");
+      var html = "";
+      for (var j = 0; j < gastos.length; j++) {
+        var g = gastos[j];
+        html += '<li class="resumen-gasto-item">';
+        html += '<span class="gasto-descripcion">' + (g.descripcion || "Gasto") + '</span>';
+        html += '<span class="gasto-monto">' + formatearMoneda(g.monto || 0) + '</span>';
+        html += '</li>';
+      }
+      listaGastosEl.innerHTML = html;
+    }
+  }
 
   if (listaEl) {
     if (!data.productosVendidos || data.productosVendidos.length === 0) {
@@ -2210,6 +2228,74 @@ async function actualizarIndicadorSync() {
   }
 
   return totalPendientes;
+}
+
+// ============================================
+// DESGLOSE DE PENDIENTES (toggle al tocar el pill)
+// ============================================
+function actualizarDesgloseDOM(d) {
+  if (!pendientesBreakdown) return;
+
+  var labels = {
+    ventas:         "Ventas",
+    mermas:         "Mermas",
+    entradas:       "Entradas",
+    abastecimientos: "Abastecimientos",
+    gastos:         "Gastos"
+  };
+
+  var partes = [];
+  for (var key in d) {
+    if (d.hasOwnProperty(key) && d[key] > 0) {
+      partes.push(
+        '<div class="breakdown-item">' +
+          '<span class="breakdown-label">' + labels[key] + '</span>' +
+          '<span class="breakdown-count">' + d[key] + '</span>' +
+        '</div>'
+      );
+    }
+  }
+
+  if (partes.length === 0) {
+    partes.push(
+      '<div class="breakdown-item breakdown-empty">Sin pendientes</div>'
+    );
+  }
+
+  pendientesBreakdown.innerHTML = partes.join("");
+}
+
+async function togglePendientesBreakdown() {
+  if (!pendientesBreakdown || !pendientesPill) return;
+
+  var visible = !pendientesBreakdown.classList.contains("hidden");
+
+  if (!visible) {
+    var d = await contarPendientesDesglose();
+    actualizarDesgloseDOM(d);
+    pendientesBreakdown.classList.remove("hidden");
+    pendientesPill.classList.add("active");
+  } else {
+    pendientesBreakdown.classList.add("hidden");
+    pendientesPill.classList.remove("active");
+  }
+}
+
+// Cerrar desglose si tocás afuera
+document.addEventListener("click", function (e) {
+  if (!pendientesBreakdown || pendientesBreakdown.classList.contains("hidden")) return;
+  if (!pendientesPill.contains(e.target) && !pendientesBreakdown.contains(e.target)) {
+    pendientesBreakdown.classList.add("hidden");
+    pendientesPill.classList.remove("active");
+  }
+});
+
+// Click en el pill de pendientes para toggle
+if (pendientesPill) {
+  pendientesPill.addEventListener("click", function (e) {
+    e.stopPropagation();
+    togglePendientesBreakdown();
+  });
 }
 
 // ============================================

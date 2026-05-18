@@ -39,7 +39,7 @@
         <span class="estado-label">Modo</span>
         <strong id="estadoModo">--</strong>
       </div>
-      <div class="estado-pill">
+      <div class="estado-pill" id="pendientesPill">
         <span class="estado-label">Pendientes</span>
         <strong id="estadoPendientes">0</strong>
       </div>
@@ -47,6 +47,11 @@
         <span class="estado-label">Última sync</span>
         <strong id="estadoUltimaSync">Nunca</strong>
       </div>
+    </div>
+
+    <!-- Desglose de pendientes (toggle al tocar Pendientes) -->
+    <div id="pendientesBreakdown" class="pendientes-breakdown hidden">
+      <!-- se llena dinámicamente desde app.js -->
     </div>
 
     <!-- Buscador -->
@@ -150,9 +155,17 @@
           <strong id="resumenTransferencia">$0</strong>
         </div>
       </div>
+      <div class="resumen-gastos">
+        <div class="resumen-detalle resumen-gastos-total">
+          <span>💸 Gastos del Día</span>
+          <strong id="resumenTotalGastos">$0</strong>
+        </div>
+      </div>
       <h3>Productos Vendidos</h3>
       <ul id="listaProductosResumen" class="lista-productos-resumen">
       </ul>
+      <h3 id="gastosTitulo" class="hidden">💸 Gastos Registrados</h3>
+      <ul id="listaGastosResumen" class="lista-productos-resumen"></ul>
     </div>
     <div class="modal-actions" style="display: flex; justify-content: center;">
       <button type="button" id="modalCerrarResumen" class="modal-btn modal-btn-primario">Cerrar</button>
