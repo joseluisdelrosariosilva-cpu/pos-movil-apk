@@ -215,6 +215,8 @@ Private Sub ImportarEntradas()
     Dim cantActual As Double, fondo As Double
     Dim ingresoEsperado As Double, gananciaEsperada As Double
     
+    Application.ScreenUpdating = False
+    
     ruta = ThisWorkbook.Path & "\" & CARPETA_WEBAPP & ARCHIVO_DATOS
     If Dir(ruta) = "" Then Exit Sub
     
@@ -285,6 +287,9 @@ Private Sub ImportarEntradas()
     
     wb.Save
     wb.Close False
+    
+    Application.ScreenUpdating = True
+    
     Exit Sub
     
 ErrorHandler:

@@ -25,21 +25,133 @@ const NOMBRE_HOJA = "Pendientes";
 // ciclo abrir → modificar → guardar sobre datos.xlsx.
 //
 // Uso: const resultado = await conExcelLock(() => { ... });
+//
+// SEGURIDAD:
+//   - La cadena de promesas NUNCA puede romperse: si la promesa anterior
+//     rechaza, el .catch() mantiene viva la cola.
+//   - Si await promesaAnterior falla, se libera la cola igual para no
+//     bloquear a los siguientes.
+//   - Timeout de advertencia (configurable via EXCEL_LOCK_TIMEOUT_MS,
+//     default 30s). LOGEA si una tarea se cuelga, NO libera el lock
+//     (liberarlo con la tarea aún ejecutándose = corrupción del Excel).
+//   - Estadísticas exportables para monitoreo.
 // ============================================
 let colaExcel = Promise.resolve();
+let tareaActiva = false;
+let tareaIdActual = null;
+let inicioTareaActual = 0;
+let profundidadCola = 0;
+let timeoutActual = null;
 
-export const conExcelLock = async (fn) => {
+/**
+ * Ejecuta fn() con acceso exclusivo a datos.xlsx.
+ * Las llamadas concurrentes se encolan y ejecutan en serie.
+ *
+ * @param {Function} fn - Función asíncrona a ejecutar con el lock adquirido.
+ * @param {number} [timeoutMs] - Timeout de advertencia (default: EXCEL_LOCK_TIMEOUT_MS o 30000).
+ * @returns {Promise<any>} Resultado de fn()
+ */
+export const conExcelLock = async (fn, timeoutMs) => {
+  const TIMEOUT =
+    timeoutMs ||
+    parseInt(process.env.EXCEL_LOCK_TIMEOUT_MS || "30000", 10);
+
+  const idUnico = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
   let liberar;
-  const esperar = new Promise((resolve) => { liberar = resolve; });
+  const esperar = new Promise((resolve) => {
+    liberar = resolve;
+  });
 
+  // Encolar: la promesa anterior debe resolverse (o rechazarse)
+  // antes de que esta tarea pueda ejecutarse.
+  // .catch(() => esperar) → si la cadena previa rechaza, la cola
+  // no se traba: espera igual a que se llame liberar().
   const promesaAnterior = colaExcel;
-  colaExcel = colaExcel.then(() => esperar);
+  colaExcel = colaExcel
+    .then(() => esperar)
+    .catch(() => esperar);
 
-  await promesaAnterior;
+  profundidadCola++;
+
   try {
-    return await fn();
-  } finally {
+    // Esperar turno
+    await promesaAnterior;
+
+    // --- Lock adquirido ---
+    tareaActiva = true;
+    tareaIdActual = idUnico;
+    inicioTareaActual = Date.now();
+    profundidadCola--;
+
+    // Timeout de advertencia (solo log, no libera — liberar con la tarea
+    // activa causaría corrupción del Excel)
+    timeoutActual = setTimeout(() => {
+      const duracion = Date.now() - inicioTareaActual;
+      console.error(
+        `⚠️  [conExcelLock] TIMEOUT — Tarea "${idUnico}" excede ${TIMEOUT}ms ` +
+          `(lleva ${duracion}ms). ` +
+          `Profundidad de cola: ${profundidadCola}. ` +
+          `POSIBLE DEADLOCK. Revisar el servidor.`,
+      );
+    }, TIMEOUT);
+
+    try {
+      return await fn();
+    } finally {
+      clearTimeout(timeoutActual);
+      timeoutActual = null;
+      tareaActiva = false;
+      tareaIdActual = null;
+      inicioTareaActual = 0;
+      liberar(); // ← libera al siguiente en la cola
+    }
+  } catch (err) {
+    // Si promesaAnterior rechazó o fn() lanzó, igual liberamos la cola
+    // para no dejar trabado al resto.
+    clearTimeout(timeoutActual);
+    timeoutActual = null;
+    tareaActiva = false;
+    tareaIdActual = null;
+    inicioTareaActual = 0;
+    profundidadCola--;
     liberar();
+    throw err;
+  }
+};
+
+// ============================================
+// Diagnóstico del mutex
+// ============================================
+export const diagnosticarMutex = () => ({
+  tareaActiva,
+  tareaIdActual,
+  inicioTareaActual: inicioTareaActual
+    ? new Date(inicioTareaActual).toISOString()
+    : null,
+  duracionMs: inicioTareaActual ? Date.now() - inicioTareaActual : 0,
+  profundidadCola: Math.max(0, profundidadCola),
+});
+
+/**
+ * Fuerza el reinicio de la cola si está trabada.
+ * USAR SOLO COMO ÚLTIMO RECURSO — si hay una tarea activa, el Excel
+ * puede quedar en estado inconsistente.
+ */
+export const reiniciarCola = () => {
+  console.warn(
+    "⚠️  [conExcelLock] REINICIO FORZADO de la cola. " +
+      (tareaActiva
+        ? `Había una tarea activa: "${tareaIdActual}". Posible corrupción.`
+        : "No había tarea activa."),
+  );
+  colaExcel = Promise.resolve();
+  tareaActiva = false;
+  tareaIdActual = null;
+  inicioTareaActual = 0;
+  profundidadCola = 0;
+  if (timeoutActual) {
+    clearTimeout(timeoutActual);
+    timeoutActual = null;
   }
 };
 

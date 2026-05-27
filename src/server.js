@@ -15,6 +15,7 @@ import authRoutes from "./routes/auth.routes.js";
 import * as control from "./utils/server-control.js";
 import { validarToken } from "./middlewares/auth.middleware.js";
 import { generarTokenUnico } from "./utils/token.util.js";
+import { diagnosticarMutex, reiniciarCola } from "./utils/excelHelper.js";
 
 // Importar utilidades de sesión
 import {
@@ -91,6 +92,21 @@ app.get("/api/estado", validarToken, (req, res) => {
     timestampInicio: info.timestampActivo,
     flags: info,
   });
+});
+
+// Ruta para diagnóstico del mutex del Excel
+app.get("/api/mutex", validarToken, (req, res) => {
+  const diag = diagnosticarMutex();
+  res.json({
+    ...diag,
+    ok: !diag.tareaActiva || diag.duracionMs < 60000,
+  });
+});
+
+// Ruta para reiniciar la cola del mutex (solo si está trabada)
+app.post("/api/mutex/reiniciar", validarToken, (req, res) => {
+  reiniciarCola();
+  res.json({ ok: true, mensaje: "Cola del mutex reiniciada" });
 });
 
 // Ruta para ver estado público del servidor (sin autenticación)

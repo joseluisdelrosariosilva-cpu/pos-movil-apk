@@ -1,7 +1,7 @@
 Attribute VB_Name = "modSincronizacion"
 ' ============================================================================
-' M√ìDULO: modSincronizacion
-' PROP√ìSITO: Sincronizaci√≥n de datos entre el Excel y el archivo datos.xlsx
+' M”DULO: modSincronizacion
+' PROP”SITO: SincronizaciÛn de datos entre el Excel y el archivo datos.xlsx
 ' que usa la webapp.
 ' ============================================================================
 
@@ -50,15 +50,15 @@ Public Sub SincronizarProductosEnDatos()
     dataArr = tbl.DataBodyRange.Value2
     numFilas = UBound(dataArr, 1)
     
-    ' Mapeo: Col1(B)->Dest A(C√≥digo), Col2(C)->Dest B(Nombre),
-    '        Col5(F)->Dest C(Precio), Col6(G)->Dest D(Costo)
+    ' Mapeo: Col1(B)->A(CÛdigo), Col2(C)->B(Nombre),
+    '        Col5(F)->C(Stock), Col6(G)->D(PrecioVta)
     paso = "Mapear columnas"
     ReDim arrOut(1 To numFilas, 1 To 4)
     For i = 1 To numFilas
         arrOut(i, 1) = dataArr(i, COL_INV_CODIGO)
         arrOut(i, 2) = dataArr(i, COL_INV_NOMBRE)
-        arrOut(i, 3) = dataArr(i, COL_INV_PRECIO_V)
-        arrOut(i, 4) = dataArr(i, COL_INV_PRECIO_C)
+        arrOut(i, 3) = dataArr(i, COL_INV_CANT_ACT)
+        arrOut(i, 4) = dataArr(i, COL_INV_PRECIO_V)
     Next i
     
     paso = "Volcar datos al destino"
@@ -92,7 +92,7 @@ ErrHandler:
            "Error: " & Err.Description, vbCritical
 End Sub
 
-' --- COPIAR √öLTIMA FACTURA DEL D√çA A datos.xlsx ----------------------------
+' --- COPIAR ⁄LTIMA FACTURA DEL DÕA A datos.xlsx ----------------------------
 
 Public Sub CopiarUltimaFacturaDelDia()
     Dim wbOrigen As Workbook
@@ -182,7 +182,7 @@ Public Sub ActualizarDatosFormulario()
     Dim frm As Object
     For Each frm In VBA.UserForms
         If TypeName(frm) = "frmPOSMovil" Then
-            If frm.Visible Then frm.ActualizarDatosFormulario
+            If frm.visible Then frm.ActualizarDatosFormulario
             Exit For
         End If
     Next frm
@@ -190,3 +190,4 @@ Public Sub ActualizarDatosFormulario()
 SalirSeguro:
     On Error Resume Next
 End Sub
+
