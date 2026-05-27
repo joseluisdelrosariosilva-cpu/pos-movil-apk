@@ -1,7 +1,7 @@
 Attribute VB_Name = "modStock"
 ' ============================================================================
-' M脫DULO: modStock
-' PROP脫SITO: Consolidaci贸n de funciones de actualizaci贸n de stock en el
+' M覦ULO: modStock
+' PROP覵ITO: Consolidaci髇 de funciones de actualizaci髇 de stock en el
 ' inventario. Reemplaza Restar_Cantidad (duplicado 3 veces), setear_funcion,
 ' actualizar_almacen, ActualizarStockProducto, ReabastecerProducto.
 ' ============================================================================
@@ -9,10 +9,10 @@ Attribute VB_Name = "modStock"
 Option Explicit
 
 ' --- RESTAR CANTIDAD DEL INVENTARIO ----------------------------------------
-' Busca el producto por c贸digo y resta la cantidad vendida.
-' Actualiza tambi茅n fondo, ingreso esperado y ganancia esperada.
+' Busca el producto por c骴igo y resta la cantidad vendida.
+' Actualiza tambi閚 fondo, ingreso esperado y ganancia esperada.
 
-Public Sub RestarCantidadInventario(codigo As String, cantidad As Double)
+Public Sub RestarCantidadInventario(codigo As String, Cantidad As Double)
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim fila As ListRow
@@ -23,7 +23,7 @@ Public Sub RestarCantidadInventario(codigo As String, cantidad As Double)
     For Each fila In tbl.ListRows
         If codigo = fila.Range(COL_INV_CODIGO) Then
             ' Restar cantidad actual
-            fila.Range(COL_INV_CANT_ACT) = fila.Range(COL_INV_CANT_ACT) - cantidad
+            fila.Range(COL_INV_CANT_ACT) = fila.Range(COL_INV_CANT_ACT) - Cantidad
             
             ' Recalcular columnas financieras
             fila.Range(COL_INV_FONDO) = fila.Range(COL_INV_CANT_ACT) * fila.Range(COL_INV_PRECIO_C)
@@ -34,9 +34,9 @@ Public Sub RestarCantidadInventario(codigo As String, cantidad As Double)
     Next fila
 End Sub
 
-' --- ACTUALIZAR STOCK DE PRODUCTO (desde importaci贸n) ----------------------
+' --- ACTUALIZAR STOCK DE PRODUCTO (desde importaci髇) ----------------------
 
-Public Function ActualizarStockProducto(codigoProducto As String, cantidad As Double) As Boolean
+Public Function ActualizarStockProducto(codigoProducto As String, Cantidad As Double) As Boolean
     On Error GoTo ErrorHandler
     
     Dim ws As Worksheet
@@ -48,7 +48,7 @@ Public Function ActualizarStockProducto(codigoProducto As String, cantidad As Do
     For i = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         If ws.Cells(i, 2).Value = codigoProducto Then
             stockActual = ws.Cells(i, 6).Value
-            ws.Cells(i, 6).Value = stockActual - cantidad
+            ws.Cells(i, 6).Value = stockActual - Cantidad
             ActualizarStockProducto = True
             Exit Function
         End If
@@ -60,15 +60,14 @@ Public Function ActualizarStockProducto(codigoProducto As String, cantidad As Do
 ErrorHandler:
     MsgBox "Error al actualizar el stock del producto." & vbCrLf & _
            "Producto: " & codigoProducto & vbCrLf & _
-           "Cantidad: " & cantidad & vbCrLf & _
+           "Cantidad: " & Cantidad & vbCrLf & _
            "Detalle: " & Err.Description, vbExclamation
     ActualizarStockProducto = False
 End Function
 
-' --- FUNCI脫N DE HOJA: ACTUALIZAR ALMAC脡N DESDE VENTAS ---------------------
+' --- FUNCI覰 DE HOJA: ACTUALIZAR ALMAC蒒 DESDE VENTAS ---------------------
 
-Public Function ObtenerStockRestante(codigo As String) As Double
-    ' Calcula el stock disponible restando lo vendido y las mermas
+Public Function ObtenerStockRestante(codigo As String, stockInicial As Double) As Double
     Dim celda As Range
     Dim cantidadVendida As Double
     Dim mermas As Double
@@ -83,10 +82,10 @@ Public Function ObtenerStockRestante(codigo As String) As Double
     Next celda
     
     ' Obtener mermas registradas
-    mermas = ObtenerMermasProducto(codigo)
+    mermas = modMermas.ObtenerMermasProducto(codigo)
     
     ' Stock inicial - vendido - mermas = stock actual
-    ObtenerStockRestante = Hoja4.Range("E" & Application.Caller.Row) - cantidadVendida - mermas
+    ObtenerStockRestante = stockInicial - cantidadVendida - mermas
 End Function
 
 ' --- REABASTECER PRODUCTO --------------------------------------------------
@@ -97,7 +96,7 @@ Public Sub ReabastecerProducto()
     Dim rng As Range
     Dim filaSeleccionada As Range
     Dim cantidadStr As String
-    Dim cantidad As Double
+    Dim Cantidad As Double
     Dim stockActual As Double
     Dim stockInicial As Double
     Dim filaTabla As Long
@@ -105,14 +104,14 @@ Public Sub ReabastecerProducto()
     Set ws = ThisWorkbook.Worksheets(HOJA_ALMACEN)
     Set tbl = ws.ListObjects(TBL_INVENTARIO)
     
-    ' Validar selecci贸n
+    ' Validar selecci髇
     If TypeName(Selection) <> "Range" Then
         MsgBox "Por favor seleccione una fila de la tabla INVENTARIO.", vbExclamation
         Exit Sub
     End If
     
     If tbl.DataBodyRange Is Nothing Then
-        MsgBox "No hay productos en el almac茅n.", vbExclamation
+        MsgBox "No hay productos en el almac閚.", vbExclamation
         Exit Sub
     End If
     
@@ -128,48 +127,60 @@ Public Sub ReabastecerProducto()
     stockActual = tbl.DataBodyRange.Cells(filaTabla, COL_INV_CANT_ACT).Value
     stockInicial = tbl.DataBodyRange.Cells(filaTabla, COL_INV_CANT_INI).Value
     
-    cantidadStr = InputBox("Ingrese la cantidad a a帽adir para reabastecer:" & vbCrLf & _
+    cantidadStr = InputBox("Ingrese la cantidad a a馻dir para reabastecer:" & vbCrLf & _
                            "Producto: " & tbl.DataBodyRange.Cells(filaTabla, COL_INV_NOMBRE).Value & vbCrLf & _
                            "Stock actual: " & stockActual, _
                            "Reabastecer Producto", "0")
     
     If cantidadStr = "" Then Exit Sub
     If Not IsNumeric(cantidadStr) Or Val(cantidadStr) <= 0 Then
-        MsgBox "Debe ingresar una cantidad v谩lida mayor a cero.", vbExclamation
+        MsgBox "Debe ingresar una cantidad v醠ida mayor a cero.", vbExclamation
         Exit Sub
     End If
     
-    cantidad = Val(cantidadStr)
+    Cantidad = Val(cantidadStr)
     
     ' Sumar a cantidad inicial
     tbl.DataBodyRange.Cells(filaTabla, COL_INV_CANT_INI).Value = _
-        Format(Round(stockInicial + cantidad, 3), "General Number")
+        Format(Round(stockInicial + Cantidad, 3), "General Number")
     tbl.DataBodyRange.Cells(filaTabla, COL_INV_FECHA).Value = Date
     
     Call ForzarActualizacionStock
     
     MsgBox "Reabastecimiento exitoso." & vbCrLf & _
            "Stock anterior: " & stockActual & vbCrLf & _
-           "Cantidad a帽adida: " & cantidad & vbCrLf & _
-           "Nuevo stock: " & (stockActual + cantidad), vbInformation
+           "Cantidad a馻dida: " & Cantidad & vbCrLf & _
+           "Nuevo stock: " & (stockActual + Cantidad), vbInformation
 End Sub
 
-' --- FORZAR ACTUALIZACI脫N DE F脫RMULAS DE STOCK ----------------------------
-' Vuelve a escribir la f贸rmula en las celdas para forzar rec谩lculo.
+' --- FORZAR ACTUALIZACI覰 DE F覴MULAS DE STOCK ----------------------------
+' Vuelve a calcular y escribir el stock actual de cada producto
 
 Public Sub ForzarActualizacionStock()
-    Dim ultima_fila As Integer
-    Dim i As Integer
+    Dim ultima_fila As Long
+    Dim i As Long
+    Dim codigo As String
+    Dim stockInicial As Double
+    Dim stockRestante As Double
+    
+    Application.ScreenUpdating = False
     
     ultima_fila = Hoja4.Range("B" & Rows.Count).End(xlUp).Row
     
     For i = 5 To ultima_fila
-        ' Forzar rec谩lculo de la funci贸n ObtenerStockRestante
-        Hoja4.Range("F" & i).Formula = "=ObtenerStockRestante([@C贸digo])"
+        codigo = CStr(Hoja4.Range("B" & i).Value)
+        stockInicial = CDbl(Hoja4.Range("E" & i).Value)
         
-        ' Recalcular columnas derivadas
-        Hoja4.Range("I" & i).Value = Hoja4.Range("F" & i).Value * Hoja4.Range("H" & i).Value
-        Hoja4.Range("J" & i).Value = Hoja4.Range("F" & i).Value * Hoja4.Range("G" & i).Value
-        Hoja4.Range("K" & i).Value = Hoja4.Range("J" & i).Value - Hoja4.Range("I" & i).Value
+        ' Calcular y escribir VALOR, no f髍mula
+        stockRestante = ObtenerStockRestante(codigo, stockInicial)
+        Hoja4.Range("F" & i).Value = stockRestante
+        
+        ' Columnas derivadas como valores directos
+        Hoja4.Range("I" & i).Value = stockRestante * Hoja4.Range("H" & i).Value  ' Fondo
+        Hoja4.Range("J" & i).Value = stockRestante * Hoja4.Range("G" & i).Value  ' Ingreso
+        Hoja4.Range("K" & i).Value = Hoja4.Range("J" & i).Value - Hoja4.Range("I" & i).Value  ' Ganancia
     Next i
+    
+    Application.ScreenUpdating = True
 End Sub
+
