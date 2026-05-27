@@ -1,4 +1,4 @@
-import { abrirExcel, guardarExcel, obtenerHojaPorNombre } from "../utils/excelHelper.js";
+import { abrirExcel, conExcelLock, guardarExcel, obtenerHojaPorNombre } from "../utils/excelHelper.js";
 
 const obtenerPrimeraFilaVacia = (hoja, columnaInicio = "A") => {
   let fila = 2;
@@ -49,46 +49,50 @@ export const sincronizarAbastecimientos = async (req, res) => {
       });
     }
 
-    const { workbook } = await abrirExcel();
-    const hojaAbastecimiento = obtenerHojaPorNombre(workbook, "Abastecimiento");
+    const resultado = await conExcelLock(async () => {
+      const { workbook } = await abrirExcel();
+      const hojaAbastecimiento = obtenerHojaPorNombre(workbook, "Abastecimiento");
 
-    let sincronizadas = 0;
-    const detalles = [];
+      let sincronizadas = 0;
+      const detalles = [];
 
-    for (const abastecimiento of abastecimientos) {
-      const codigo = abastecimiento.codigo;
-      const cantidad = Number(abastecimiento.cantidad || 0);
-      const fecha = abastecimiento.fechaHora || new Date().toISOString();
+      for (const abastecimiento of abastecimientos) {
+        const codigo = abastecimiento.codigo;
+        const cantidad = Number(abastecimiento.cantidad || 0);
+        const fecha = abastecimiento.fechaHora || new Date().toISOString();
 
-      if (!codigo || !cantidad) {
-        continue;
+        if (!codigo || !cantidad) {
+          continue;
+        }
+
+        const filaAbastecimiento = obtenerPrimeraFilaVacia(hojaAbastecimiento, "A");
+        hojaAbastecimiento.cell(`A${filaAbastecimiento}`).value(codigo);
+        hojaAbastecimiento.cell(`B${filaAbastecimiento}`).value(cantidad);
+        hojaAbastecimiento.cell(`C${filaAbastecimiento}`).value(fecha);
+
+        const stock = sumarStockProducto(workbook, codigo, cantidad);
+
+        detalles.push({
+          codigo,
+          cantidad,
+          filaAbastecimiento,
+          filaProductos: stock.fila,
+          stockAntes: stock.stockActual,
+          stockDespues: stock.nuevoStock,
+        });
+
+        sincronizadas++;
       }
 
-      const filaAbastecimiento = obtenerPrimeraFilaVacia(hojaAbastecimiento, "A");
-      hojaAbastecimiento.cell(`A${filaAbastecimiento}`).value(codigo);
-      hojaAbastecimiento.cell(`B${filaAbastecimiento}`).value(cantidad);
-      hojaAbastecimiento.cell(`C${filaAbastecimiento}`).value(fecha);
+      await guardarExcel(workbook);
 
-      const stock = sumarStockProducto(workbook, codigo, cantidad);
-
-      detalles.push({
-        codigo,
-        cantidad,
-        filaAbastecimiento,
-        filaProductos: stock.fila,
-        stockAntes: stock.stockActual,
-        stockDespues: stock.nuevoStock,
-      });
-
-      sincronizadas++;
-    }
-
-    await guardarExcel(workbook);
+      return { sincronizadas, detalles };
+    });
 
     return res.json({
       success: true,
-      sincronizadas,
-      detalles,
+      sincronizadas: resultado.sincronizadas,
+      detalles: resultado.detalles,
     });
   } catch (error) {
     console.error("❌ Error sincronizando abastecimientos:", error.message);

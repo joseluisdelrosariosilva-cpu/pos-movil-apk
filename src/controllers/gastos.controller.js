@@ -1,4 +1,4 @@
-import { abrirExcel, guardarExcel, obtenerHojaPorNombre } from "../utils/excelHelper.js";
+import { abrirExcel, conExcelLock, guardarExcel, obtenerHojaPorNombre } from "../utils/excelHelper.js";
 
 // ============================================
 // POST /api/gastos
@@ -13,42 +13,46 @@ export const registrarGastos = async (req, res) => {
       return res.status(400).json({ error: "Debe incluir al menos un gasto" });
     }
 
-    const { workbook } = await abrirExcel();
+    const resultado = await conExcelLock(async () => {
+      const { workbook } = await abrirExcel();
 
-    // Obtener o crear hoja Gastos
-    let hojaGastos;
-    try {
-      hojaGastos = obtenerHojaPorNombre(workbook, "Gastos");
-    } catch (e) {
-      // Si no existe la hoja, crearla con encabezados
-      hojaGastos = workbook.addSheet("Gastos");
-      hojaGastos.cell("A1").value("Fecha");
-      hojaGastos.cell("B1").value("Descripcion");
-      hojaGastos.cell("C1").value("Monto");
-    }
+      // Obtener o crear hoja Gastos
+      let hojaGastos;
+      try {
+        hojaGastos = obtenerHojaPorNombre(workbook, "Gastos");
+      } catch (e) {
+        // Si no existe la hoja, crearla con encabezados
+        hojaGastos = workbook.addSheet("Gastos");
+        hojaGastos.cell("A1").value("Fecha");
+        hojaGastos.cell("B1").value("Descripcion");
+        hojaGastos.cell("C1").value("Monto");
+      }
 
-    // Encontrar primera fila vacía (después de encabezados)
-    let fila = 2;
-    while (hojaGastos.cell(`A${fila}`).value()) {
-      fila++;
-    }
+      // Encontrar primera fila vacía (después de encabezados)
+      let fila = 2;
+      while (hojaGastos.cell(`A${fila}`).value()) {
+        fila++;
+      }
 
-    // Escribir cada gasto
-    for (const gasto of gastos) {
-      hojaGastos.cell(`A${fila}`).value(gasto.fecha);
-      hojaGastos.cell(`B${fila}`).value(gasto.descripcion);
-      hojaGastos.cell(`C${fila}`).value(Number(gasto.monto || 0));
-      fila++;
-    }
+      // Escribir cada gasto
+      for (const gasto of gastos) {
+        hojaGastos.cell(`A${fila}`).value(gasto.fecha);
+        hojaGastos.cell(`B${fila}`).value(gasto.descripcion);
+        hojaGastos.cell(`C${fila}`).value(Number(gasto.monto || 0));
+        fila++;
+      }
 
-    // Guardar cambios
-    await guardarExcel(workbook);
+      // Guardar cambios
+      await guardarExcel(workbook);
 
-    console.log(`✅ ${gastos.length} gastos registrados en Excel (hoja Gastos)`);
+      return { cantidad: gastos.length };
+    });
+
+    console.log(`✅ ${resultado.cantidad} gastos registrados en Excel (hoja Gastos)`);
 
     res.json({
       success: true,
-      sincronizadas: gastos.length,
+      sincronizadas: resultado.cantidad,
     });
 
   } catch (error) {

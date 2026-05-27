@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   abrirExcel,
+  conExcelLock,
   generarFacturaIdExcel,
   escribirLineaVenta,
   actualizarStock,
@@ -57,73 +58,88 @@ export const crearVenta = async (req, res) => {
     }
 
     // ===== PROCESAR VENTA (TODO O NADA) =====
-    const { workbook, hoja } = await abrirExcel();
+    const resultado = await conExcelLock(async () => {
+      const { workbook, hoja } = await abrirExcel();
 
-    // 1. Verificar stock ANTES de procesar
-    const erroresStock = [];
-    for (const producto of productos) {
-      const stockDisponible = await verificarStock(workbook, producto.codigo);
-      if (stockDisponible < producto.cantidad) {
-        erroresStock.push({
-          codigo: producto.codigo,
-          nombre: producto.nombre,
-          disponible: stockDisponible,
-          solicitado: producto.cantidad,
+      // 1. Verificar stock ANTES de procesar
+      const erroresStock = [];
+      for (const producto of productos) {
+        const stockDisponible = await verificarStock(workbook, producto.codigo);
+        if (stockDisponible < producto.cantidad) {
+          erroresStock.push({
+            codigo: producto.codigo,
+            nombre: producto.nombre,
+            disponible: stockDisponible,
+            solicitado: producto.cantidad,
+          });
+        }
+      }
+
+      // Si hay errores de stock, cancelar TODO
+      if (erroresStock.length > 0) {
+        return { tipo: "error_stock", erroresStock };
+      }
+
+      // 2. Generar FacturaID y FechaHora desde la MISMA referencia de tiempo
+      const ahora = obtenerFechaActual();
+      const facturaId = generarFacturaIdExcel(hoja, ahora);
+      const fechaHora = fechaLocalISO(ahora);
+
+      // 3. Escribir líneas en Pendientes
+      for (const producto of productos) {
+        const subtotal = producto.cantidad * producto.precio;
+        await escribirLineaVenta(hoja, {
+          facturaId,
+          fechaHora,
+          codigoProducto: producto.codigo,
+          nombreProducto: producto.nombre,
+          cantidad: producto.cantidad,
+          precioUnitario: producto.precio,
+          subtotal,
+          efectivo: pago.efectivo,
+          transferencia: pago.transferencia,
         });
       }
-    }
 
-    // Si hay errores de stock, cancelar TODO
-    if (erroresStock.length > 0) {
-      return res.status(400).json({
-        error: "Stock insuficiente para algunos productos",
-        productos: erroresStock,
-      });
-    }
+      // 4. ACTUALIZAR STOCK en hoja Productos
+      for (const producto of productos) {
+        await actualizarStock(workbook, producto.codigo, producto.cantidad);
+      }
 
-    // 2. Generar FacturaID y FechaHora desde la MISMA referencia de tiempo
-    const ahora = obtenerFechaActual();
-    const facturaId = generarFacturaIdExcel(hoja, ahora);
-    const fechaHora = fechaLocalISO(ahora);
+      // 5. Guardar TODO (un solo save)
+      await guardarExcel(workbook);
 
-    // 3. Escribir líneas en Pendientes
-    for (const producto of productos) {
-      const subtotal = producto.cantidad * producto.precio;
-      await escribirLineaVenta(hoja, {
+      return {
+        tipo: "ok",
         facturaId,
         fechaHora,
-        codigoProducto: producto.codigo,
-        nombreProducto: producto.nombre,
-        cantidad: producto.cantidad,
-        precioUnitario: producto.precio,
-        subtotal,
-        efectivo: pago.efectivo,
-        transferencia: pago.transferencia,
+        totalCalculado,
+        productosResumen: productos.map((p) => ({
+          codigo: p.codigo,
+          nombre: p.nombre,
+          cantidad: p.cantidad,
+          subtotal: p.cantidad * p.precio,
+        })),
+      };
+    });
+
+    // Procesar resultado FUERA del mutex
+    if (resultado.tipo === "error_stock") {
+      return res.status(400).json({
+        error: "Stock insuficiente para algunos productos",
+        productos: resultado.erroresStock,
       });
     }
 
-    // 4. ACTUALIZAR STOCK en hoja Productos
-    for (const producto of productos) {
-      await actualizarStock(workbook, producto.codigo, producto.cantidad);
-    }
-
-    // 5. Guardar TODO (un solo save)
-    await guardarExcel(workbook);
-
     // 6. ESCRIBIR EN LOG para Excel
-    escribirEnLog(facturaId, fechaHora, totalCalculado, productos.length);
+    escribirEnLog(resultado.facturaId, resultado.fechaHora, resultado.totalCalculado, productos.length);
 
     // Respuesta exitosa
     res.status(201).json({
       success: true,
-      facturaId,
-      total: totalCalculado,
-      productos: productos.map((p) => ({
-        codigo: p.codigo,
-        nombre: p.nombre,
-        cantidad: p.cantidad,
-        subtotal: p.cantidad * p.precio,
-      })),
+      facturaId: resultado.facturaId,
+      total: resultado.totalCalculado,
+      productos: resultado.productosResumen,
     });
   } catch (error) {
     console.error("❌ Error en crearVenta:", error.message);
@@ -201,117 +217,122 @@ export const sincronizarVentas = async (req, res) => {
 
     console.log(`🔄 Sync: Recibiendo ${ventas.length} ventas para sincronizar`);
 
-    // Abrir Excel una sola vez
-    const { workbook, hoja } = await abrirExcel();
+    // TODO el ciclo open → modificar → save corre dentro del mutex
+    const resultado = await conExcelLock(async () => {
+      // Abrir Excel una sola vez
+      const { workbook, hoja } = await abrirExcel();
 
-    let sincronizadas = 0;
-    let errores = [];
-    const resumenPorFactura = {};
+      let sincronizadas = 0;
+      let errores = [];
+      const resumenPorFactura = {};
 
-    // Procesar cada venta (acepta formato plano o agrupado)
-    for (const venta of ventas) {
-      try {
-        if (Array.isArray(venta.productos) && venta.productos.length > 0) {
-          // Formato agrupado por factura
-          for (const item of venta.productos) {
-            await escribirLineaVenta(hoja, {
-              facturaId: venta.facturaId,
-              fechaHora: venta.fechaHora,
-              codigoProducto: item.codigoProducto,
-              nombreProducto: item.nombre,
-              cantidad: item.cantidad,
-              precioUnitario: item.precio,
-              subtotal: item.subtotal,
-              efectivo: venta.efectivo,
-              transferencia: venta.transferencia,
-            });
-
-            await actualizarStock(workbook, item.codigoProducto, item.cantidad);
-
-            const claveFactura = String(venta.facturaId || "sin_factura");
-            if (!resumenPorFactura[claveFactura]) {
-              resumenPorFactura[claveFactura] = {
+      // Procesar cada venta (acepta formato plano o agrupado)
+      for (const venta of ventas) {
+        try {
+          if (Array.isArray(venta.productos) && venta.productos.length > 0) {
+            // Formato agrupado por factura
+            for (const item of venta.productos) {
+              await escribirLineaVenta(hoja, {
                 facturaId: venta.facturaId,
                 fechaHora: venta.fechaHora,
+                codigoProducto: item.codigoProducto,
+                nombreProducto: item.nombre,
+                cantidad: item.cantidad,
+                precioUnitario: item.precio,
+                subtotal: item.subtotal,
+                efectivo: venta.efectivo,
+                transferencia: venta.transferencia,
+              });
+
+              await actualizarStock(workbook, item.codigoProducto, item.cantidad);
+
+              const claveFactura = String(venta.facturaId || "sin_factura");
+              if (!resumenPorFactura[claveFactura]) {
+                resumenPorFactura[claveFactura] = {
+                  facturaId: venta.facturaId,
+                  fechaHora: venta.fechaHora,
+                  total: 0,
+                  cantidadProductos: 0,
+                };
+              }
+              resumenPorFactura[claveFactura].total += Number(item.subtotal || 0);
+              resumenPorFactura[claveFactura].cantidadProductos += 1;
+
+              sincronizadas++;
+            }
+          } else {
+            // Formato plano por línea
+            const {
+              facturaId,
+              fechaHora,
+              codigoProducto,
+              nombre,
+              cantidad,
+              precio,
+              subtotal,
+              efectivo,
+              transferencia,
+            } = venta;
+
+            await escribirLineaVenta(hoja, {
+              facturaId,
+              fechaHora,
+              codigoProducto,
+              nombreProducto: nombre,
+              cantidad,
+              precioUnitario: precio,
+              subtotal,
+              efectivo,
+              transferencia,
+            });
+
+            await actualizarStock(workbook, codigoProducto, cantidad);
+
+            const claveFactura = String(facturaId || "sin_factura");
+            if (!resumenPorFactura[claveFactura]) {
+              resumenPorFactura[claveFactura] = {
+                facturaId,
+                fechaHora,
                 total: 0,
                 cantidadProductos: 0,
               };
             }
-            resumenPorFactura[claveFactura].total += Number(item.subtotal || 0);
+            resumenPorFactura[claveFactura].total += Number(subtotal || 0);
             resumenPorFactura[claveFactura].cantidadProductos += 1;
 
             sincronizadas++;
           }
-        } else {
-          // Formato plano por línea
-          const {
-            facturaId,
-            fechaHora,
-            codigoProducto,
-            nombre,
-            cantidad,
-            precio,
-            subtotal,
-            efectivo,
-            transferencia,
-          } = venta;
-
-          await escribirLineaVenta(hoja, {
-            facturaId,
-            fechaHora,
-            codigoProducto,
-            nombreProducto: nombre,
-            cantidad,
-            precioUnitario: precio,
-            subtotal,
-            efectivo,
-            transferencia,
+        } catch (err) {
+          errores.push({
+            codigo: venta.codigoProducto || venta.facturaId || "desconocido",
+            error: err.message,
           });
-
-          await actualizarStock(workbook, codigoProducto, cantidad);
-
-          const claveFactura = String(facturaId || "sin_factura");
-          if (!resumenPorFactura[claveFactura]) {
-            resumenPorFactura[claveFactura] = {
-              facturaId,
-              fechaHora,
-              total: 0,
-              cantidadProductos: 0,
-            };
-          }
-          resumenPorFactura[claveFactura].total += Number(subtotal || 0);
-          resumenPorFactura[claveFactura].cantidadProductos += 1;
-
-          sincronizadas++;
         }
-      } catch (err) {
-        errores.push({
-          codigo: venta.codigoProducto || venta.facturaId || "desconocido",
-          error: err.message,
-        });
       }
-    }
 
-    // Guardar Excel
-    await guardarExcel(workbook);
+      // Guardar Excel (AÚN DENTRO del mutex)
+      await guardarExcel(workbook);
 
-    // Obtener la última factura ID de datos.xlsx para referencia
-    const ultimaFacturaId = await obtenerUltimaFacturaId(hoja);
+      // Obtener la última factura ID de datos.xlsx para referencia
+      const ultimaFacturaId = await obtenerUltimaFacturaId(hoja);
 
-    // Escribir ventas sincronizadas también en ventas.log
-    Object.values(resumenPorFactura).forEach((r) => {
+      return { sincronizadas, errores, resumenPorFactura, ultimaFacturaId };
+    });
+
+    // Escribir ventas sincronizadas también en ventas.log (FUERA del mutex)
+    Object.values(resultado.resumenPorFactura).forEach((r) => {
       if (!r.facturaId) return;
       escribirEnLog(r.facturaId, r.fechaHora, r.total, r.cantidadProductos);
     });
 
-    console.log(`✅ Sync completado: ${sincronizadas} ventas sincronizadas`);
-    console.log(`📋 Última factura en datos.xlsx: ${ultimaFacturaId}`);
+    console.log(`✅ Sync completado: ${resultado.sincronizadas} ventas sincronizadas`);
+    console.log(`📋 Última factura en datos.xlsx: ${resultado.ultimaFacturaId}`);
 
     res.json({
       success: true,
-      sincronizadas,
-      ultimaFacturaId: ultimaFacturaId || undefined,
-      errores: errores.length > 0 ? errores : undefined,
+      sincronizadas: resultado.sincronizadas,
+      ultimaFacturaId: resultado.ultimaFacturaId || undefined,
+      errores: resultado.errores.length > 0 ? resultado.errores : undefined,
     });
   } catch (error) {
     console.error("❌ Error en sincronizarVentas:", error.message);

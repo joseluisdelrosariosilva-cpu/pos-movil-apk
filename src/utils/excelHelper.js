@@ -18,6 +18,32 @@ const RUTA_EXCEL = path.resolve(__dirname, "..", "..", "data", "datos.xlsx");
 const NOMBRE_HOJA = "Pendientes";
 
 // ============================================
+// MUTEX PARA ACCESO EXCLUSIVO AL EXCEL
+// ============================================
+// Node.js es single-thread, pero async hace que requests concurrentes
+// puedan pisar el open/save del otro. Este lock serializa TODO el
+// ciclo abrir → modificar → guardar sobre datos.xlsx.
+//
+// Uso: const resultado = await conExcelLock(() => { ... });
+// ============================================
+let colaExcel = Promise.resolve();
+
+export const conExcelLock = async (fn) => {
+  let liberar;
+  const esperar = new Promise((resolve) => { liberar = resolve; });
+
+  const promesaAnterior = colaExcel;
+  colaExcel = colaExcel.then(() => esperar);
+
+  await promesaAnterior;
+  try {
+    return await fn();
+  } finally {
+    liberar();
+  }
+};
+
+// ============================================
 // 1. ABRIR EXCEL - Obtiene el workbook y la hoja
 // ============================================
 export const abrirExcel = async () => {

@@ -1,4 +1,4 @@
-import { abrirExcel, guardarExcel, obtenerHojaPorNombre, actualizarStock } from "../utils/excelHelper.js";
+import { abrirExcel, conExcelLock, guardarExcel, obtenerHojaPorNombre, actualizarStock } from "../utils/excelHelper.js";
 
 // ============================================
 // POST /api/mermas
@@ -12,43 +12,47 @@ export const registrarMermas = async (req, res) => {
     if (!mermas?.length) {
       return res.status(400).json({ error: "Debe incluir al menos una merma" });
     }
+
+    const resultado = await conExcelLock(async () => {
+      const { workbook } = await abrirExcel();
+      
+      // 1. Escribir en hoja Merma
+      const hojaMerma = obtenerHojaPorNombre(workbook, "Merma");
+      
+      // Encontrar primera fila vacía en columna A (después de encabezados)
+      let fila = 1;
+      // Si hay encabezados en A1, empezar desde fila 2
+      if (hojaMerma.cell(`A1`).value()) {
+        fila = 2;
+      }
+      while (hojaMerma.cell(`A${fila}`).value()) {
+        fila++;
+      }
+      
+      // Escribir cada merma: columna A = código, B = nombre, C = cantidad
+      for (const merma of mermas) {
+        hojaMerma.cell(`A${fila}`).value(merma.codigo);
+        hojaMerma.cell(`B${fila}`).value(merma.nombre);
+        hojaMerma.cell(`C${fila}`).value(merma.cantidad);
+        fila++;
+      }
+      
+      // 2. Actualizar stock en hoja Productos (restar cantidades)
+      for (const merma of mermas) {
+        await actualizarStock(workbook, merma.codigo, merma.cantidad);
+      }
+      
+      // 3. Guardar cambios
+      await guardarExcel(workbook);
+      
+      return { cantidad: mermas.length };
+    });
     
-    const { workbook } = await abrirExcel();
-    
-    // 1. Escribir en hoja Merma
-    const hojaMerma = obtenerHojaPorNombre(workbook, "Merma");
-    
-    // Encontrar primera fila vacía en columna A (después de encabezados)
-    let fila = 1;
-    // Si hay encabezados en A1, empezar desde fila 2
-    if (hojaMerma.cell(`A1`).value()) {
-      fila = 2;
-    }
-    while (hojaMerma.cell(`A${fila}`).value()) {
-      fila++;
-    }
-    
-    // Escribir cada merma: columna A = código, B = nombre, C = cantidad
-    for (const merma of mermas) {
-      hojaMerma.cell(`A${fila}`).value(merma.codigo);
-      hojaMerma.cell(`B${fila}`).value(merma.nombre);
-      hojaMerma.cell(`C${fila}`).value(merma.cantidad);
-      fila++;
-    }
-    
-    // 2. Actualizar stock en hoja Productos (restar cantidades)
-    for (const merma of mermas) {
-      await actualizarStock(workbook, merma.codigo, merma.cantidad);
-    }
-    
-    // 3. Guardar cambios
-    await guardarExcel(workbook);
-    
-    console.log(`✅ ${mermas.length} mermas registradas en Excel`);
+    console.log(`✅ ${resultado.cantidad} mermas registradas en Excel`);
     
     res.json({
       success: true,
-      sincronizadas: mermas.length,
+      sincronizadas: resultado.cantidad,
     });
     
   } catch (error) {
