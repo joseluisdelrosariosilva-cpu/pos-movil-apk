@@ -75,7 +75,7 @@ Gestion Plus archivos/
 | Original | Estado | Reorganizado |
 |----------|--------|-------------|
 | `calling.bas` | ✅ Conservado | Form-callers UI; `ReabastecerProducto` reasignado a `modStock` |
-| `Módulo1.bas` | ✅ Conservado | Form-callers UI + `fila_sel, cargo, pago`; delegaciones reasignadas a modEliminarRegistros/modTrabajadores/modDashboard |
+| `Calling2.bas` | ✅ Conservado | Form-callers UI + `fila_sel, cargo, pago`; delegaciones reasignadas a modEliminarRegistros/modTrabajadores/modDashboard |
 | `descuento_almacen.bas` | ✅ Conservado | UDFs para fórmulas de Excel (`ObtenerMermasProducto`, `actualizar_almacen`) |
 | `Módulo2.bas` | ❌ Eliminado | Todo → `modRespaldos` |
 | `Módulo3.bas` | ❌ Eliminado | Botón `eliminar_ingrediente` reasignado a `modEliminarRegistros` |

@@ -9,17 +9,17 @@ Sistema de Punto de Venta (POS) diseñado para usarse desde un dispositivo móvi
 ## Características
 
 - 📱 **Frontend mobile-first** con tema oscuro, búsqueda en tiempo real y carrito flotante
+- 📱 **APK Android nativa** con Capacitor (SQLite local offline)
 - 🔒 **Sesión única** vinculada a IP con token y expiración renovable (30 min)
 - 📊 **Persistencia en Excel** — sin base de datos tradicional
 - 🚦 **Control por flags** — macros de Excel pueden iniciar/detener el servidor
-- 📦 **Installer portable** con Inno Setup (auto-instala Node.js si es necesario)
 - ⚡ **ES Modules** con Express 5
 
 ---
 
 ## Requisitos
 
-- **Node.js** v18+ (auto-instalado por el installer si no está presente)
+- **Node.js** v18+
 - **Windows** (se usa `xlsx-populate` y macros VBA de Excel)
 - **Red local** para acceso desde dispositivo móvil
 - **`data/datos.xlsx`** con las hojas `Productos` y `Pendientes`
@@ -36,17 +36,14 @@ git clone <repo-url>
 npm install
 ```
 
-### Producción (con installer)
+### APK Android (con Capacitor)
 
-1. Compilar el installer con [Inno Setup 6](https://jrsoftware.org/isdl.php):
-
-```bat
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\webapp-beta-portable.iss"
+```bash
+# Sincronizar y compilar APK
+npm run build:android
 ```
 
-2. Distribuir `installer/output/webapp-beta-portable-installer.exe`
-3. En la PC destino: ejecutar el installer (detecta e instala Node.js automáticamente)
-4. El installer crea `start-server.bat` para iniciar el servidor
+También podés usar `compilar.bat` directamente (configura `JAVA_HOME` y `ANDROID_HOME` automáticamente).
 
 ---
 
@@ -60,6 +57,10 @@ npm run dev
 
 # Producción
 npm start
+
+# Android
+npm run build:android   # Compilar APK
+npm run open:android    # Abrir en Android Studio
 ```
 
 ### Acceder desde el móvil
@@ -72,7 +73,7 @@ http://{IP-del-servidor}:3000
 
 | Acción | Mecanismo |
 |--------|-----------|
-| Iniciar servidor | Macro ejecuta `start-server.bat` |
+| Iniciar servidor | Macro ejecuta `npm start` vía shell |
 | Verificar estado | Macro lee `flags/servidor_activo.flag` |
 | Detener servidor | Macro crea `flags/detener.flag` |
 
@@ -103,10 +104,20 @@ webapp-beta/
 │   ├── routes/
 │   │   ├── auth.routes.js        # Autenticación (sesión/token)
 │   │   ├── pos.routes.js         # Productos
-│   │   └── ventas.routes.js      # Ventas
+│   │   ├── ventas.routes.js      # Ventas
+│   │   ├── gastos.routes.js      # Gastos
+│   │   ├── abastecimientos.routes.js  # Abastecimientos
+│   │   ├── entrada-productos.routes.js # Entrada de productos
+│   │   ├── mermas.routes.js      # Mermas
+│   │   └── resumen.routes.js     # Resumen / dashboard
 │   ├── controllers/
 │   │   ├── pos.controller.js     # Lee productos desde Excel
-│   │   └── ventas.controller.js  # Escribe ventas en Excel
+│   │   ├── ventas.controller.js  # Escribe ventas en Excel
+│   │   ├── gastos.controller.js
+│   │   ├── abastecimientos.controller.js
+│   │   ├── entrada-productos.controller.js
+│   │   ├── mermas.controller.js
+│   │   └── resumen.controller.js
 │   ├── middlewares/
 │   │   └── auth.middleware.js    # Validación de token de sesión
 │   ├── utils/
@@ -118,18 +129,18 @@ webapp-beta/
 │   ├── public/
 │   │   ├── index.html            # UI principal del POS
 │   │   ├── css/style.css         # Estilos (tema oscuro, responsive)
-│   │   └── js/app.js             # Lógica del frontend
+│   │   └── js/
+│   │       ├── app.js            # Lógica del frontend
+│   │       └── database.js       # Manejo de datos (SQLite local)
 │   └── views/
 │       └── ocupado.html          # Página "POS Ocupado"
+├── android/                      # Proyecto Android nativo (Capacitor)
 ├── data/
 │   └── datos.xlsx                # Base de datos intermediaria
+├── dist/                         # Builds empaquetados
 ├── flags/                        # Control del servidor
-│   ├── servidor_activo.flag
-│   └── detener.flag
-├── installer/
-│   ├── webapp-beta-portable.iss  # Script de Inno Setup
-│   └── README-INSTALLER.md       # Documentación del installer
-├── .env                          # Variables locales (no subir a git)
+├── capacitor.config.json         # Configuración de Capacitor
+├── compilar.bat                  # Script para compilar APK
 ├── .env.example                  # Template de variables
 ├── .gitignore
 └── package.json
@@ -149,6 +160,11 @@ webapp-beta/
 | `POST /api/cerrar-sesion` | POST | Sí | Cierra la sesión activa |
 | `GET /api/productos` | GET | Sí | Lista productos desde Excel |
 | `POST /api/ventas` | POST | Sí | Registra una venta en Excel |
+| `POST /api/gastos` | POST | Sí | Registra gastos desde APK |
+| `POST /api/abastecimientos` | POST | Sí | Sincroniza abastecimientos desde APK |
+| `POST /api/entrada-productos` | POST | Sí | Sincroniza productos nuevos desde APK |
+| `POST /api/mermas` | POST | Sí | Registra mermas desde APK |
+| `GET /api/resumen` | GET | Sí | Resumen de ventas del día |
 
 Todas las peticiones autenticadas envían el token en el header `x-session-token`.
 
@@ -220,13 +236,12 @@ npm install
 npm start
 ```
 
-### Opción B: Installer portable (usuarios finales)
+### Opción B: APK Android (usuarios finales)
 
-El installer con Inno Setup:
-- Copia el proyecto manteniendo la estructura.
-- Detecta e instala Node.js v22 automáticamente si no está presente.
-- Ejecuta `npm install --omit=dev`.
-- Crea `start-server.bat` y acceso directo opcional.
+Compilar con Capacitor:
+- Genera una APK nativa de Android en `android/app/build/outputs/apk/debug/`.
+- La APK se conecta al servidor Express en la red local.
+- Usa SQLite local (`@capacitor-community/sqlite`) como caché offline.
 
 ---
 
@@ -237,8 +252,10 @@ El installer con Inno Setup:
 | Node.js | v18+ | Runtime |
 | Express | 5.2.1 | Servidor HTTP / API |
 | xlsx-populate | 1.21.0 | Lectura/escritura de Excel |
+| Capacitor | 8.x | App Android nativa |
+| @capacitor-community/sqlite | 8.x | SQLite local offline |
 | dotenv | latest | Variables de entorno |
-| nodemon | 3.1.14 | Hot reload (dev) |
+| nodemon | 3.1.x | Hot reload (dev) |
 
 ---
 
