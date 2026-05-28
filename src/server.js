@@ -7,11 +7,8 @@ import { fileURLToPath } from "url";
 import posRoutes from "./routes/pos.routes.js";
 import ventasRoutes from "./routes/ventas.routes.js";
 import resumenRoutes from "./routes/resumen.routes.js";
-import mermasRoutes from "./routes/mermas.routes.js";
-import entradaProductosRoutes from "./routes/entrada-productos.routes.js";
-import abastecimientosRoutes from "./routes/abastecimientos.routes.js";
-import gastosRoutes from "./routes/gastos.routes.js";
 import authRoutes from "./routes/auth.routes.js";
+import syncCompletoRoutes from "./routes/sync-completo.routes.js";
 import * as control from "./utils/server-control.js";
 import { validarToken } from "./middlewares/auth.middleware.js";
 import { generarTokenUnico } from "./utils/token.util.js";
@@ -71,10 +68,7 @@ app.use("/api", authRoutes);
 app.use("/api", validarToken, posRoutes);
 app.use("/api", validarToken, ventasRoutes);
 app.use("/api", validarToken, resumenRoutes);
-app.use("/api", validarToken, mermasRoutes);
-app.use("/api", validarToken, entradaProductosRoutes);
-app.use("/api", validarToken, abastecimientosRoutes);
-app.use("/api", validarToken, gastosRoutes);
+app.use("/api", validarToken, syncCompletoRoutes);
 
 // Ruta de prueba
 app.get("/api/test", validarToken, (req, res) => {

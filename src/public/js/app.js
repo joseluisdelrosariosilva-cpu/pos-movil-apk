@@ -1959,13 +1959,13 @@ document.addEventListener("DOMContentLoaded", function() {
 // SINCRONIZAR VENTAS OFFLINE + CARGAR PRODUCTOS
 // ============================================
 window.sincronizar = async function() {
-  if (!DB.sincronizarVentas) {
-    logSyncAPK("Función de sync de ventas no disponible", "error");
+  if (!DB.sincronizarCompleto) {
+    logSyncAPK("Función sincronizarCompleto no disponible", "error");
     mostrarMensaje("Función sync no disponible", "error");
     return;
   }
 
-  logSyncAPK("Inicio de sincronización manual");
+  logSyncAPK("Inicio de sincronización manual (batch)");
 
   var btnSync = document.getElementById("btnSync");
   var syncIcon = document.getElementById("syncIcon");
@@ -1995,7 +1995,7 @@ window.sincronizar = async function() {
     if (btnCancelSync) {
       btnCancelSync.onclick = function() {
         syncCancelled = true;
-        cancelarEscaneo = true; // Cancelar escaneo en database.js
+        cancelarEscaneo = true;
         if (modalSync) modalSync.classList.add("hidden");
         logSyncAPK("Sincronización cancelada por usuario", "warning");
         mostrarMensaje("Sincronización cancelada", "info", 2000);
@@ -2009,12 +2009,11 @@ window.sincronizar = async function() {
         if (ipManual) {
           window.SERVER_URL = "http://" + ipManual + ":3000";
           serverUrlCacheado = window.SERVER_URL;
-          // Guardar en cache si está disponible
           if (DB.guardarServidorCacheado) {
             DB.guardarServidorCacheado(window.SERVER_URL);
           }
           manualIPSet = true;
-          syncCancelled = true; // Detener escaneo
+          syncCancelled = true;
           cancelarEscaneo = true;
           if (modalSync) modalSync.classList.add("hidden");
           logSyncAPK("Servidor configurado manualmente: " + window.SERVER_URL);
@@ -2026,10 +2025,9 @@ window.sincronizar = async function() {
     if (DB.descubrirServidor) {
       var servidorEncontrado = await DB.descubrirServidor();
       
-      // Si se canceló o se usó IP manual, salir si no hay IP válida
       if (syncCancelled && !manualIPSet) {
         logSyncAPK("Escaneo cancelado sin IP manual", "warning");
-        return; // Cancelado sin IP manual
+        return;
       }
       
       if (servidorEncontrado && !manualIPSet) {
@@ -2047,154 +2045,65 @@ window.sincronizar = async function() {
       }
     }
 
-    // Ocultar modal si sigue visible
     if (modalSync) modalSync.classList.add("hidden");
-  }
-
-  var pendientes = await DB.contarVentasPendientes();
-  logSyncAPK("Pendientes de ventas antes de sync: " + pendientes);
-  if (pendientes === 0) {
-    mostrarMensaje("Sincronizando con servidor...", "info");
   }
 
   // Capturar URL ANTES de cualquier operación
   var urlServidor = window.SERVER_URL;
 
-  // Siempre intentar sincronizar aunque haya 0 pendientes
   try {
     if (btnSync) btnSync.disabled = true;
     if (syncIcon) syncIcon.textContent = "⏳";
-    var mensajeSync = "";
-    var overallSuccess = true;
-    var resultadoVentas = { success: false, sincronizadas: 0, error: "No ejecutado" };
-    function agregarResumenOk(texto) {
-      if (!texto) return;
-      if (!mensajeSync) {
-        mensajeSync = "✅ " + texto;
-      } else {
-        mensajeSync += " y " + texto;
-      }
-    }
 
-    // 1) Sincronizar entrada de productos SIEMPRE
-    if (DB.sincronizarEntradaProductos) {
-      try {
-        logSyncAPK("Sincronizando entradas de productos...");
-        var resultadoEntradaProductos = await DB.sincronizarEntradaProductos(urlServidor);
-        if (resultadoEntradaProductos.success && resultadoEntradaProductos.sincronizadas > 0) {
-          agregarResumenOk(resultadoEntradaProductos.sincronizadas + " entradas de productos sincronizadas");
-          logSyncAPK("Entradas sincronizadas: " + resultadoEntradaProductos.sincronizadas);
-        } else if (!resultadoEntradaProductos.success) {
-          overallSuccess = false;
-          mensajeSync = "⚠️ Error entrada productos: " + resultadoEntradaProductos.error;
-          logSyncAPK("Error sincronizando entradas: " + resultadoEntradaProductos.error, "error");
+    mostrarMensaje("Sincronizando...", "info");
+
+    // ===== ÚNICO REQUEST BATCH =====
+    var resultado = await DB.sincronizarCompleto(urlServidor);
+
+    if (resultado.success) {
+      modoOffline = false;
+
+      var parts = [];
+      if (resultado.sincronizados) {
+        var s = resultado.sincronizados;
+        if (s.productos > 0)       parts.push(s.productos + " productos");
+        if (s.abastecimientos > 0) parts.push(s.abastecimientos + " abastecimientos");
+        if (s.ventas > 0)          parts.push(s.ventas + " ventas");
+        if (s.mermas > 0)          parts.push(s.mermas + " mermas");
+        if (s.gastos > 0)          parts.push(s.gastos + " gastos");
+      }
+
+      if (resultado.remap) {
+        var r = resultado.remap;
+        var remapeos = [];
+        if (r.codigos && Object.keys(r.codigos).length > 0) {
+          remapeos.push(Object.keys(r.codigos).length + " códigos");
         }
-      } catch (e) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando entrada de productos:", e);
-        mensajeSync = "⚠️ Excepción entrada productos: " + e.message;
-        logSyncAPK("Excepción sincronizando entradas: " + e.message, "error");
-      }
-    }
-
-    // 2) Sincronizar abastecimientos SIEMPRE (después de entradas y antes de ventas/mermas)
-    if (DB.sincronizarAbastecer) {
-      try {
-        logSyncAPK("Sincronizando abastecimientos...");
-        var resultadoAbastecer = await DB.sincronizarAbastecer(urlServidor);
-        if (resultadoAbastecer.success && resultadoAbastecer.sincronizadas > 0) {
-          agregarResumenOk(resultadoAbastecer.sincronizadas + " abastecimientos");
-          logSyncAPK("Abastecimientos sincronizados: " + resultadoAbastecer.sincronizadas);
-        } else if (!resultadoAbastecer.success) {
-          overallSuccess = false;
-          mensajeSync += " | Error abastecimientos: " + resultadoAbastecer.error;
-          logSyncAPK("Error sincronizando abastecimientos: " + resultadoAbastecer.error, "error");
+        if (r.facturas && Object.keys(r.facturas).length > 0) {
+          remapeos.push(Object.keys(r.facturas).length + " facturas");
         }
-      } catch (eAbastecer) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando abastecimientos:", eAbastecer);
-        mensajeSync += " | Error abastecimientos: " + eAbastecer.message;
-        logSyncAPK("Excepción sincronizando abastecimientos: " + eAbastecer.message, "error");
-      }
-    }
-
-    // 3) Ventas (después de entradas y abastecimientos)
-    try {
-      logSyncAPK("Sincronizando ventas...");
-      resultadoVentas = await DB.sincronizarVentas();
-
-      if (resultadoVentas.success) {
-        guardarUltimaSync(new Date());
-        agregarResumenOk(resultadoVentas.sincronizadas + " ventas");
-        logSyncAPK("Ventas sincronizadas: " + resultadoVentas.sincronizadas);
-      } else {
-        overallSuccess = false;
-        mensajeSync += " | Error ventas: " + (resultadoVentas.error || "No se pudo sincronizar ventas");
-        logSyncAPK("Error sincronizando ventas: " + (resultadoVentas.error || "desconocido"), "error");
-      }
-    } catch (eVentas) {
-      overallSuccess = false;
-      mensajeSync += " | Excepción ventas: " + (eVentas.message || "desconocido");
-      logSyncAPK("Excepción sincronizando ventas: " + (eVentas.message || "desconocido"), "error");
-    }
-
-    // 4) Sincronizar mermas SIEMPRE
-    if (DB.sincronizarMermas) {
-      try {
-        logSyncAPK("Sincronizando mermas...");
-        var resultadoMermas = await DB.sincronizarMermas(urlServidor);
-        if (resultadoMermas.success && resultadoMermas.sincronizadas > 0) {
-          agregarResumenOk(resultadoMermas.sincronizadas + " mermas");
-          logSyncAPK("Mermas sincronizadas: " + resultadoMermas.sincronizadas);
-        } else if (!resultadoMermas.success) {
-          overallSuccess = false;
-          mensajeSync += " | Error mermas: " + resultadoMermas.error;
-          logSyncAPK("Error sincronizando mermas: " + resultadoMermas.error, "error");
+        if (remapeos.length > 0) {
+          logSyncAPK("🔄 Remapeos aplicados: " + remapeos.join(", "));
         }
-      } catch (e) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando mermas:", e);
-        mensajeSync += " | Error mermas: " + e.message;
-        logSyncAPK("Excepción sincronizando mermas: " + e.message, "error");
       }
+
+      var mensajeSync = parts.length > 0
+        ? "✅ Sincronizado: " + parts.join(", ")
+        : "✅ Sincronización completada";
+
+      logSyncAPK("Batch completado: " + mensajeSync);
+      mostrarMensaje(mensajeSync, "exito", 4000);
+    } else {
+      modoOffline = true;
+      logSyncAPK("❌ Error en batch: " + (resultado.error || "desconocido"), "error");
+      mostrarMensaje("⚠️ " + (resultado.error || "Error al sincronizar"), "warning", 4000);
     }
 
-    // 5) Sincronizar gastos SIEMPRE
-    if (DB.sincronizarGastos) {
-      try {
-        logSyncAPK("Sincronizando gastos...");
-        var resultadoGastos = await DB.sincronizarGastos(urlServidor);
-        if (resultadoGastos.success && resultadoGastos.sincronizadas > 0) {
-          agregarResumenOk(resultadoGastos.sincronizadas + " gastos");
-          logSyncAPK("Gastos sincronizados: " + resultadoGastos.sincronizadas);
-        } else if (!resultadoGastos.success) {
-          overallSuccess = false;
-          mensajeSync += " | Error gastos: " + resultadoGastos.error;
-          logSyncAPK("Error sincronizando gastos: " + resultadoGastos.error, "error");
-        }
-      } catch (e) {
-        overallSuccess = false;
-        console.error("❌ Error sincronizando gastos:", e);
-        mensajeSync += " | Error gastos: " + e.message;
-        logSyncAPK("Excepción sincronizando gastos: " + e.message, "error");
-      }
-    }
-
-    // Modo offline depende del estado global
-    modoOffline = !overallSuccess;
-
-    if (!mensajeSync) {
-      mensajeSync = overallSuccess ? "✅ Sincronización completada" : "⚠️ Sincronización finalizada con advertencias";
-    }
-
-    logSyncAPK("Sincronización finalizada");
-    mostrarMensaje(mensajeSync, overallSuccess ? "exito" : "warning", 4000);
-    
-    // Actualizar UI
+    // Actualizar UI: recargar productos + indicadores
     await cargarProductos();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
-    
+
   } catch (error) {
     console.error("❌ Error sync:", error);
     modoOffline = true;

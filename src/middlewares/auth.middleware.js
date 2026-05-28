@@ -24,20 +24,12 @@ const RUTAS_PUBLICAS = [
 const RUTAS_FLEXIBLES = [
   "/productos",
   "/ventas",
-  "/mermas",
   "/resumen",
   "/api/productos",
   "/api/ventas",
-  "/api/mermas",
   "/api/resumen",
-  "/sync",
-  "/api/sync",
-  "/entrada-productos",
-  "/api/entrada-productos",
-  "/abastecimientos",
-  "/api/abastecimientos",
-  "/gastos",
-  "/api/gastos",
+  "/sync/completo",
+  "/api/sync/completo",
 ];
 
 const normalizarRuta = (ruta = "") => {

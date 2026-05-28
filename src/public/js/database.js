@@ -780,114 +780,27 @@ async function contarVentasPendientes() {
   }
 }
 
-// ============================================
-// SYNCRONIZAR VENTAS AL SERVIDOR
-// ============================================
-async function sincronizarVentas() {
-  var pendientes = await getVentasPendientes();
-  if (pendientes.length === 0) {
-    return { success: true, sincronizadas: 0 };
-  }
-
-  // Intentar auto-descubrir el servidor si no está configurado
-  if (!window.SERVER_URL) {
-    console.log("🔍 Buscando servidor en la red local...");
-    var serverUrlDescubierto = await descubrirServidor();
-    if (serverUrlDescubierto) {
-      console.log("✅ Servidor encontrado: " + serverUrlDescubierto);
-      window.SERVER_URL = serverUrlDescubierto;
-    } else {
-      return { success: false, error: "No se encontró el servidor. verifica que la PC esté conectada y el servidor activo." };
+// Marcar ventas como sincronizadas (helper para batch completo)
+async function marcarVentasSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE ventas_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
     }
-  }
-
-  // Enviar formato plano por línea (compatible con el backend actual)
-  var ventas = [];
-  for (var i = 0; i < pendientes.length; i++) {
-    var v = pendientes[i];
-    ventas.push({
-      facturaId: v.factura_id,
-      fechaHora: v.fecha_hora,
-      codigoProducto: v.codigo_producto,
-      nombre: v.nombre,
-      cantidad: v.cantidad,
-      precio: v.precio,
-      subtotal: v.subtotal,
-      efectivo: v.efectivo || v.efectividad || 0,
-      transferencia: v.transferencia || 0,
-    });
-  }
-
-  try {
-    var response = await fetch(window.SERVER_URL + "/api/sync", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ventas: ventas }),
-    });
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
+  } else {
+    var todas = leerLocal(LS_KEYS.ventas, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
     }
-
-    var result = await response.json();
-
-    // Guardar referencia de última factura del servidor para uso offline
-    if (result.ultimaFacturaId) {
-      try {
-        localStorage.setItem('posmovil_ultima_factura_referencia', result.ultimaFacturaId);
-        // También extraer y guardar el prefijo y sufijo
-        var refId = result.ultimaFacturaId.toString();
-        if (refId.length >= 10) {
-          var prefijoRef = refId.substring(0,5);
-          var sufijoRef = parseInt(refId.substring(5,10)) || 0;
-          localStorage.setItem('posmovil_ultimo_prefijo', prefijoRef);
-          localStorage.setItem('posmovil_ultimo_sufijo', sufijoRef.toString());
-          // Guardar también la fecha de hoy para calcular días transcurridos
-          var hoyISO = new Date().getFullYear() + '-' +
-                     String(new Date().getMonth()+1).padStart(2,'0') + '-' +
-                     String(new Date().getDate()).padStart(2,'0');
-          localStorage.setItem('posmovil_fecha_referencia', hoyISO);
-          console.log('✅ Referencia de factura guardada: ' + refId + ' (prefijo: ' + prefijoRef + ', sufijo: ' + sufijoRef + ', fecha: ' + hoyISO + ')');
-        }
-      } catch(e) {
-        console.error('Error guardando referencia de factura:', e);
+    for (var x = 0; x < todas.length; x++) {
+      if (idsMap[String(todas[x].id)]) {
+        todas[x].synced = 1;
       }
     }
-
-    // Marcar como sincronizadas
-    if (storageMode === "sqlite" && db) {
-      for (var j = 0; j < pendientes.length; j++) {
-        await db.execute(
-          "UPDATE ventas_pending SET synced = 1 WHERE id = ?",
-          [pendientes[j].id]
-        );
-      }
-    } else {
-      var todas = leerLocal(LS_KEYS.ventas, []);
-      var idsPendientes = {};
-      for (var k = 0; k < pendientes.length; k++) {
-        idsPendientes[String(pendientes[k].id)] = true;
-      }
-
-      for (var x = 0; x < todas.length; x++) {
-        if (idsPendientes[String(todas[x].id)]) {
-          todas[x].synced = 1;
-        }
-      }
-      guardarLocal(LS_KEYS.ventas, todas);
-    }
-
-    console.log("✅ " + ventas.length + " líneas sincronizadas");
-    return {
-      success: true,
-      sincronizadas: result.sincronizadas || ventas.length,
-      errores: result.errores || [],
-    };
-   } catch (error) {
-    console.error("❌ Error sincronizando:", error);
-    return { success: false, error: error.message };
+    guardarLocal(LS_KEYS.ventas, todas);
   }
 }
 
@@ -1012,64 +925,8 @@ async function marcarMermasSynced(ids) {
   }
 }
 
-// Sincronizar mermas al servidor
-// Acepta opcionalmente la URL del servidor como parámetro
-async function sincronizarMermas(serverUrl) {
-  var pendientes = await getMermasPendientes();
-  
-  if (pendientes.length === 0) {
-    return { success: true, sincronizadas: 0 };
-  }
-
-  // Usar URL pasada como parámetro, o la del window, o nada
-  var url = serverUrl || window.SERVER_URL;
-  
-  if (!url) {
-    return { success: false, error: "No hay servidor configurado para sincronizar mermas" };
-  }
-
-  // Preparar datos para enviar
-  var mermas = pendientes.map(function(m) {
-    return {
-      codigo: m.codigo_producto,
-      nombre: m.nombre,
-      cantidad: m.cantidad,
-      fechaHora: m.fecha_hora,
-    };
-  });
-
-  try {
-    var response = await fetch(url + "/api/mermas", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-session-token": window.SESSION_TOKEN || "",
-      },
-      body: JSON.stringify({ mermas: mermas }),
-    });
-
-    if (!response.ok) {
-      var errorText = await response.text();
-      throw new Error("HTTP " + response.status + " - " + errorText);
-    }
-
-    var result = await response.json();
-
-    // Marcar como sincronizadas
-    var ids = pendientes.map(function(m) { return m.id; });
-    await marcarMermasSynced(ids);
-
-    console.log("✅ " + mermas.length + " mermas sincronizadas");
-    return {
-      success: true,
-      sincronizadas: result.sincronizadas || mermas.length,
-    };
-  } catch (error) {
-    console.error("❌ Error sincronizando mermas:", error.message);
-    return { success: false, error: error.message };
-  }
-}
-
+// ============================================
+// FUNCIONES PARA ENTRADA DE PRODUCTOS (sync al servidor)
 // ============================================
 // FUNCIONES PARA ENTRADA DE PRODUCTOS (sync al servidor)
 // ============================================
@@ -1178,60 +1035,6 @@ async function marcarAbastecerSynced(ids) {
   }
 }
 
-// Sincronizar abastecimientos al servidor
-// Acepta opcionalmente la URL del servidor como parámetro
-async function sincronizarAbastecer(serverUrl) {
-  var pendientes = await getAbastecerPendientes();
-
-  if (pendientes.length === 0) {
-    return { success: true, sincronizadas: 0 };
-  }
-
-  var url = serverUrl || window.SERVER_URL;
-  if (!url) {
-    return { success: false, error: "No hay servidor configurado para sincronizar abastecimientos" };
-  }
-
-  var abastecimientos = pendientes.map(function(a) {
-    return {
-      codigo: a.codigo_producto,
-      nombre: a.nombre,
-      cantidad: Number(a.cantidad || 0),
-      fechaHora: a.fecha_hora,
-    };
-  });
-
-  try {
-    var response = await fetch(url + "/api/abastecimientos", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-session-token": window.SESSION_TOKEN || "",
-      },
-      body: JSON.stringify({ abastecimientos: abastecimientos }),
-    });
-
-    if (!response.ok) {
-      var errorText = await response.text();
-      throw new Error("HTTP " + response.status + " - " + errorText);
-    }
-
-    var result = await response.json();
-
-    var ids = pendientes.map(function(a) { return a.id; });
-    await marcarAbastecerSynced(ids);
-
-    console.log("✅ " + abastecimientos.length + " abastecimientos sincronizados");
-    return {
-      success: true,
-      sincronizadas: result.sincronizadas || abastecimientos.length,
-    };
-  } catch (error) {
-    console.error("❌ Error sincronizando abastecimientos:", error.message);
-    return { success: false, error: error.message };
-  }
-}
-
 // Marcar entrada de productos como sincronizadas
 async function marcarEntradaProductosSynced(ids) {
   if (storageMode === "sqlite" && db) {
@@ -1253,92 +1056,6 @@ async function marcarEntradaProductosSynced(ids) {
       }
     }
     guardarLocal(LS_KEYS.entrada_productos, todas);
-  }
-}
-
-// Sincronizar entrada de productos al servidor
-// Acepta opcionalmente la URL del servidor como parámetro
-async function sincronizarEntradaProductos(serverUrl) {
-  logSyncDebugAPK("🔍 [DEBUG] sincronizarEntradaProductos() iniciado");
-  
-  var pendientes = await getEntradaProductosPendientes();
-  logSyncDebugAPK("🔍 [DEBUG] Pendientes entrada productos: " + pendientes.length);
-  
-  if (pendientes.length === 0) {
-    logSyncDebugAPK("🔍 [DEBUG] No hay entradas pendientes para sincronizar");
-    return { success: true, sincronizadas: 0 };
-  }
-
-  // Usar URL pasada como parámetro, o la del window, o nada
-  var url = serverUrl || window.SERVER_URL;
-  logSyncDebugAPK("🔍 [DEBUG] URL del servidor para entrada productos: " + url);
-  
-  if (!url) {
-    logSyncDebugAPK("🔍 [DEBUG] No hay URL configurada", "error");
-    return { success: false, error: "No hay servidor configurado para sincronizar entrada de productos" };
-  }
-
-  // Preparar datos para enviar
-  var productos = pendientes.map(function(p) {
-    return {
-      codigo: p.codigo,
-      nombre: p.nombre,
-      cantidad: p.cantidad,
-      precio_venta: p.precio_venta,
-      precio_costo: p.precio_costo,
-      fecha_hora: p.fecha_hora,
-    };
-  });
-  
-  logSyncDebugAPK("🔍 [DEBUG] Enviando " + productos.length + " productos al servidor");
-
-  try {
-    logSyncDebugAPK("🔍 [DEBUG] Haciendo fetch a: " + url + "/api/entrada-productos");
-    var response = await fetch(url + "/api/entrada-productos", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-session-token": window.SESSION_TOKEN || "",
-      },
-      body: JSON.stringify({ productos: productos }),
-    });
-
-    logSyncDebugAPK("🔍 [DEBUG] Respuesta del servidor: " + response.status + " " + response.statusText);
-
-    if (!response.ok) {
-      var errorText = await response.text();
-      logSyncDebugAPK("🔍 [DEBUG] Error response: " + errorText, "error");
-      throw new Error("HTTP " + response.status + " - " + errorText);
-    }
-
-    var result = await response.json();
-    logSyncDebugAPK("🔍 [DEBUG] Resultado del servidor: " + (result && result.mensaje ? result.mensaje : "OK"));
-    if (result && Array.isArray(result.detalles) && result.detalles.length > 0) {
-      var maxDetalles = Math.min(result.detalles.length, 3);
-      for (var d = 0; d < maxDetalles; d++) {
-        var detalle = result.detalles[d];
-        logSyncDebugAPK(
-          "🧾 Excel -> " + detalle.codigo + " (Productos F" + detalle.filaProductos + ", Entrada F" + detalle.filaEntrada + ")"
-        );
-      }
-      if (result.detalles.length > maxDetalles) {
-        logSyncDebugAPK("🧾 ... y " + (result.detalles.length - maxDetalles) + " más");
-      }
-    }
-
-    // Marcar como sincronizadas
-    var ids = pendientes.map(function(p) { return p.id; });
-    await marcarEntradaProductosSynced(ids);
-    logSyncDebugAPK("🔍 [DEBUG] Marcadas como sincronizadas: " + ids.length + " productos");
-
-    logSyncDebugAPK("✅ " + productos.length + " entrada de productos sincronizadas");
-    return {
-      success: true,
-      sincronizadas: result.sincronizadas || productos.length,
-    };
-  } catch (error) {
-    logSyncDebugAPK("❌ Error sincronizando entrada de productos: " + error.message, "error");
-    return { success: false, error: error.message };
   }
 }
 
@@ -1534,36 +1251,121 @@ async function marcarGastosSynced(ids) {
   }
 }
 
-// Sincronizar gastos al servidor
-// Acepta opcionalmente la URL del servidor como parámetro
-async function sincronizarGastos(serverUrl) {
-  var pendientes = await getGastosPendientes();
 
-  if (pendientes.length === 0) {
-    return { success: true, sincronizadas: 0 };
-  }
+
+// ============================================
+// SINCRONIZAR TODO EN UN SOLO REQUEST BATCH
+// ============================================
+// Reemplaza 5 requests separados (entrada-productos, abastecimientos,
+// ventas, mermas, gastos) por UN solo request.
+// El servidor procesa en orden, remapea códigos/facturas si hay
+// conflicto, y la APK solo necesita recargar productos al final.
+// ============================================
+async function sincronizarCompleto(serverUrl) {
+  logSyncDebugAPK("📦 [sync-completo] Iniciando batch...");
 
   var url = serverUrl || window.SERVER_URL;
   if (!url) {
-    return { success: false, error: "No hay servidor configurado para sincronizar gastos" };
+    logSyncDebugAPK("❌ [sync-completo] No hay URL de servidor", "error");
+    return { success: false, error: "No hay servidor configurado" };
   }
 
-  var gastos = pendientes.map(function(g) {
-    return {
-      fecha: g.fecha,
-      descripcion: g.descripcion,
-      monto: Number(g.monto || 0),
-    };
-  });
+  // 1. Recolectar datos pendientes de cada categoría
+  var pendientesProductos  = await getEntradaProductosPendientes();
+  var pendientesAbast      = await getAbastecerPendientes();
+  var pendientesVentas     = await getVentasPendientes();
+  var pendientesMermas     = await getMermasPendientes();
+  var pendientesGastos     = await getGastosPendientes();
 
+  var total = pendientesProductos.length + pendientesAbast.length +
+              pendientesVentas.length + pendientesMermas.length +
+              pendientesGastos.length;
+
+  if (total === 0) {
+    logSyncDebugAPK("📦 [sync-completo] Nada pendiente, OK");
+    return { success: true, sincronizados: {}, remap: { codigos: {}, facturas: {} } };
+  }
+
+  logSyncDebugAPK("📦 [sync-completo] Enviando " + total + " registros (" +
+    pendientesProductos.length + " prod, " +
+    pendientesAbast.length + " abast, " +
+    pendientesVentas.length + " ventas, " +
+    pendientesMermas.length + " mermas, " +
+    pendientesGastos.length + " gastos)");
+
+  // 2. Preparar payload (mismos formatos que antes)
+  var payload = {};
+
+  if (pendientesProductos.length) {
+    payload.productos = pendientesProductos.map(function(p) {
+      return {
+        codigo: p.codigo,
+        nombre: p.nombre,
+        cantidad: p.cantidad,
+        precio_venta: p.precio_venta,
+        precio_costo: p.precio_costo,
+        fecha_hora: p.fecha_hora,
+      };
+    });
+  }
+
+  if (pendientesAbast.length) {
+    payload.abastecimientos = pendientesAbast.map(function(a) {
+      return {
+        codigo: a.codigo_producto,
+        nombre: a.nombre,
+        cantidad: Number(a.cantidad || 0),
+        fechaHora: a.fecha_hora,
+      };
+    });
+  }
+
+  if (pendientesVentas.length) {
+    payload.ventas = pendientesVentas.map(function(v) {
+      return {
+        facturaId: v.factura_id,
+        fechaHora: v.fecha_hora,
+        codigoProducto: v.codigo_producto,
+        nombre: v.nombre,
+        cantidad: v.cantidad,
+        precio: v.precio,
+        subtotal: v.subtotal,
+        efectivo: v.efectivo || v.efectividad || 0,
+        transferencia: v.transferencia || 0,
+      };
+    });
+  }
+
+  if (pendientesMermas.length) {
+    payload.mermas = pendientesMermas.map(function(m) {
+      return {
+        codigo: m.codigo_producto,
+        nombre: m.nombre,
+        cantidad: m.cantidad,
+        fechaHora: m.fecha_hora,
+      };
+    });
+  }
+
+  if (pendientesGastos.length) {
+    payload.gastos = pendientesGastos.map(function(g) {
+      return {
+        fecha: g.fecha,
+        descripcion: g.descripcion,
+        monto: Number(g.monto || 0),
+      };
+    });
+  }
+
+  // 3. Enviar request
   try {
-    var response = await fetch(url + "/api/gastos", {
+    var response = await fetch(url + "/api/sync/completo", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-session-token": window.SESSION_TOKEN || "",
       },
-      body: JSON.stringify({ gastos: gastos }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -1573,16 +1375,64 @@ async function sincronizarGastos(serverUrl) {
 
     var result = await response.json();
 
-    var ids = pendientes.map(function(g) { return g.id; });
-    await marcarGastosSynced(ids);
+    if (!result.success) {
+      throw new Error(result.mensaje || result.error || "Error desconocido del servidor");
+    }
 
-    console.log("✅ " + gastos.length + " gastos sincronizados");
-    return {
-      success: true,
-      sincronizadas: result.sincronizadas || gastos.length,
-    };
+    // 4. Marcar TODOS los registros como sincronizados
+    var idsProductos = pendientesProductos.map(function(p) { return p.id; });
+    var idsAbast     = pendientesAbast.map(function(a) { return a.id; });
+    var idsVentas    = pendientesVentas.map(function(v) { return v.id; });
+    var idsMermas    = pendientesMermas.map(function(m) { return m.id; });
+    var idsGastos    = pendientesGastos.map(function(g) { return g.id; });
+
+    if (idsProductos.length) await marcarEntradaProductosSynced(idsProductos);
+    if (idsAbast.length)     await marcarAbastecerSynced(idsAbast);
+    if (idsVentas.length)    await marcarVentasSynced(idsVentas);
+    if (idsMermas.length)    await marcarMermasSynced(idsMermas);
+    if (idsGastos.length)    await marcarGastosSynced(idsGastos);
+
+    // 5. Guardar referencia de última factura si el servidor devolvió remap
+    if (result.remap && result.remap.facturas) {
+      var facturasArray = Object.values(result.remap.facturas);
+      if (facturasArray.length > 0) {
+        // Tomar la última factura del remap como referencia
+        var ultimaFactura = facturasArray[facturasArray.length - 1];
+        try {
+          localStorage.setItem('posmovil_ultima_factura_referencia', ultimaFactura);
+          var refStr = ultimaFactura.toString();
+          if (refStr.length >= 10) {
+            localStorage.setItem('posmovil_ultimo_prefijo', refStr.substring(0, 5));
+            localStorage.setItem('posmovil_ultimo_sufijo', parseInt(refStr.substring(5, 10)) || 0);
+            var hoyISO = new Date().getFullYear() + '-' +
+                        String(new Date().getMonth() + 1).padStart(2, '0') + '-' +
+                        String(new Date().getDate()).padStart(2, '0');
+            localStorage.setItem('posmovil_fecha_referencia', hoyISO);
+          }
+        } catch (e) {
+          console.warn("⚠️ [sync-completo] Error guardando referencia factura:", e);
+        }
+      }
+    }
+
+    // 6. Guardar también la referencia de sincronización
+    try {
+      localStorage.setItem('posmovil_ultima_sync', new Date().toISOString());
+    } catch (e) {}
+
+    logSyncDebugAPK(
+      "✅ [sync-completo] Batch completado: " +
+      (result.sincronizados ? (
+        Object.keys(result.sincronizados)
+          .filter(function(k) { return result.sincronizados[k] > 0; })
+          .map(function(k) { return result.sincronizados[k] + " " + k; })
+          .join(", ")
+      ) : "OK")
+    );
+
+    return result;
   } catch (error) {
-    console.error("❌ Error sincronizando gastos:", error.message);
+    logSyncDebugAPK("❌ [sync-completo] Error: " + error.message, "error");
     return { success: false, error: error.message };
   }
 }
@@ -2339,12 +2189,10 @@ window.Database = {
   guardarVentaOnlineLocal: guardarVentaOnlineLocal,
   getVentasPendientes: getVentasPendientes,
   contarVentasPendientes: contarVentasPendientes,
-  sincronizarVentas: sincronizarVentas,
   // Funciones para mermas
   guardarMermaOffline: guardarMermaOffline,
   getMermasPendientes: getMermasPendientes,
   contarMermasPendientes: contarMermasPendientes,
-  sincronizarMermas: sincronizarMermas,
   getResumenOffline: getResumenOffline,
   limpiarVentasAntiguas: limpiarVentasAntiguas,
   obtenerServidorCacheado: obtenerServidorCacheado,
@@ -2355,21 +2203,19 @@ window.Database = {
   getUltimoCodigoProducto: getUltimoCodigoProducto,
   guardarNuevoProducto: guardarNuevoProducto,
   guardarEntradaProductoCompleto: guardarEntradaProductoCompleto,
-  // Funciones para sincronizar entrada de productos
   getEntradaProductosPendientes: getEntradaProductosPendientes,
   contarEntradaProductosPendientes: contarEntradaProductosPendientes,
-  sincronizarEntradaProductos: sincronizarEntradaProductos,
-   // Funciones para abastecer (reabastecer productos existentes)
+  // Funciones para abastecer (reabastecer productos existentes)
   actualizarStockProducto: actualizarStockProducto,
   guardarAbastecerOffline: guardarAbastecerOffline,
   contarAbastecerPendientes: contarAbastecerPendientes,
   getAbastecerPendientes: getAbastecerPendientes,
-  sincronizarAbastecer: sincronizarAbastecer,
   // Funciones para gastos
   guardarGastoOffline: guardarGastoOffline,
   getGastosPendientes: getGastosPendientes,
   contarGastosPendientes: contarGastosPendientes,
-  sincronizarGastos: sincronizarGastos,
+  // Batch completo (reemplaza los 5 sync individuales)
+  sincronizarCompleto: sincronizarCompleto,
   // Funciones para historial de ventas
   getVentasAgrupadasPorFactura: getVentasAgrupadasPorFactura,
   deshacerVenta: deshacerVenta,

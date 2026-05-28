@@ -40,6 +40,7 @@ Public Sub ImportarVentas()
     Call ProcesarMermas
     Call ImportarGastos
     
+    Application.ScreenUpdating = False
     ' 2. Leer ventas pendientes
     resultado = ObtenerVentasPendientes()
     
