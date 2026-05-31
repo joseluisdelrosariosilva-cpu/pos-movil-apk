@@ -1,13 +1,13 @@
 Attribute VB_Name = "modElaboracion"
 ' ============================================================================
-' MÃ“DULO: modElaboracion
-' PROPÃ“SITO: LÃ³gica de negocio para la elaboraciÃ³n de productos a partir de
+' MÓDULO: modElaboracion
+' PROPÓSITO: Lógica de negocio para la elaboración de productos a partir de
 ' recetas. Valida stock, descuenta ingredientes y registra en inventario.
 ' ============================================================================
 
 Option Explicit
 
-' --- VALIDAR STOCK DE INGREDIENTES PARA UNA ELABORACIÃ“N --------------------
+' --- VALIDAR STOCK DE INGREDIENTES PARA UNA ELABORACIÓN --------------------
 ' Devuelve True si hay suficiente stock.
 ' En ingredientesFaltantes devuelve la lista de faltantes (si los hay).
 
@@ -144,7 +144,7 @@ Public Sub RegistrarProductoElaborado(ByVal nombreReceta As String, _
     Dim newRow As ListRow
     Dim codigoProducto As String
     
-    ' Usar cÃ³digo externo si se provee, o generar uno nuevo
+    ' Usar código externo si se provee, o generar uno nuevo
     If codigoExterno = "" Then
         Call GenerarCodigoProducto
         codigoProducto = Codigo_Producto
@@ -233,14 +233,14 @@ Public Function CalcularCostoReceta(ByVal nombreReceta As String) As Double
     Dim unidad As String
     Dim cantidadBase As Double
     Dim precioUnitario As Double
-    Dim costototal As Double
+    Dim costoTotal As Double
 
     Set wsIngRec = ThisWorkbook.Sheets(HOJA_INGR_RECETA)
     Set wsIng = ThisWorkbook.Sheets(HOJA_INGREDIENTES)
     Set tblIngRec = wsIngRec.ListObjects(TBL_INGREDIENTES_RECETA)
     Set tblIng = wsIng.ListObjects(TBL_INGREDIENTES)
 
-    costototal = 0
+    costoTotal = 0
 
     ' Recorrer ingredientes de la receta
     For Each fila In tblIngRec.ListRows
@@ -256,11 +256,11 @@ Public Function CalcularCostoReceta(ByVal nombreReceta As String) As Double
             precioUnitario = modCalculosInventario.ObtenerPrecioPorUnidadBase(ingrediente)
 
             ' Acumular costo
-            costototal = costototal + (cantidadBase * precioUnitario)
+            costoTotal = costoTotal + (cantidadBase * precioUnitario)
         End If
     Next
 
-    CalcularCostoReceta = costototal
+    CalcularCostoReceta = costoTotal
 End Function
 
 ' --- ACTUALIZAR COSTOS DE UNA RECETA (costo, ganancia por lote/unidad) ------
@@ -313,9 +313,75 @@ Public Sub ActualizarRecetasPorIngrediente(ByVal nombreIngrediente As String)
 
     Set recetasAfectadas = modRecetas.ObtenerRecetasPorIngrediente(nombreIngrediente)
 
-    If recetasAfectadas.Count > 0 Then
+    If recetasAfectadas.count > 0 Then
         For Each receta In recetasAfectadas
             Call ActualizarCostosReceta(CStr(receta))
         Next receta
     End If
+End Sub
+
+' --- ABASTECER PRODUCTO EXISTENTE EN ALMACEN ---------------------------------
+' Busca el producto por codigo y suma la cantidad elaborada al stock existente.
+' Actualiza precios (Venta directo, Costo con promedio ponderado)
+' y recalcula columnas financieras (Fondo, Ingreso, Ganancia).
+
+Public Sub AbastecerProductoElaborado(ByVal codigoProducto As String, _
+                                       ByVal cantidadElaborada As Double, _
+                                       ByVal nuevoPrecioV As Double, _
+                                       ByVal nuevoCostoUnidad As Double)
+    Dim wsAlmacen As Worksheet
+    Dim tbl As ListObject
+    Dim fila As ListRow
+    Dim cantIniVieja As Double
+    Dim cantActVieja As Double
+    Dim precioCViejo As Double
+    
+    Set wsAlmacen = ThisWorkbook.Sheets(HOJA_ALMACEN)
+    Set tbl = wsAlmacen.ListObjects(TBL_INVENTARIO)
+    
+    wsAlmacen.Unprotect password:=PASS_HOJA
+    
+    For Each fila In tbl.ListRows
+        If fila.Range.Cells(1, COL_INV_CODIGO).Value = codigoProducto Then
+            cantIniVieja = fila.Range.Cells(1, COL_INV_CANT_INI).Value
+            cantActVieja = fila.Range.Cells(1, COL_INV_CANT_ACT).Value
+            precioCViejo = fila.Range.Cells(1, COL_INV_PRECIO_C).Value
+            
+            ' Sumar cantidad al stock inicial y actual
+            fila.Range.Cells(1, COL_INV_CANT_INI).Value = cantIniVieja + cantidadElaborada
+            fila.Range.Cells(1, COL_INV_CANT_ACT).Value = cantActVieja + cantidadElaborada
+            
+            ' Actualizar Fecha
+            fila.Range.Cells(1, COL_INV_FECHA).Value = Date
+            
+            ' Actualizar Precio de Venta (se pisa con el nuevo)
+            fila.Range.Cells(1, COL_INV_PRECIO_V).Value = nuevoPrecioV
+            
+            ' Actualizar Precio de Costo (promedio ponderado)
+            If cantActVieja + cantidadElaborada > 0 Then
+                fila.Range.Cells(1, COL_INV_PRECIO_C).Value = _
+                    (cantActVieja * precioCViejo + cantidadElaborada * nuevoCostoUnidad) / _
+                    (cantActVieja + cantidadElaborada)
+            End If
+            
+            ' Recalcular columnas financieras
+            Dim nuevoCantAct As Double
+            Dim nuevoPrecioC As Double
+            nuevoCantAct = fila.Range.Cells(1, COL_INV_CANT_ACT).Value
+            nuevoPrecioC = fila.Range.Cells(1, COL_INV_PRECIO_C).Value
+            
+            fila.Range.Cells(1, COL_INV_FONDO).Value = nuevoCantAct * nuevoPrecioC
+            fila.Range.Cells(1, COL_INV_INGRESO).Value = nuevoCantAct * nuevoPrecioV
+            fila.Range.Cells(1, COL_INV_GANANCIA).Value = _
+            fila.Range.Cells(1, COL_INV_INGRESO).Value - fila.Range.Cells(1, COL_INV_FONDO).Value
+            
+            Exit For
+        End If
+    Next fila
+    
+    tbl.Sort.Apply
+    wsAlmacen.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
+    
+    ' Registrar en tablas auxiliares
+    Call AgregarFecha(Date)
 End Sub

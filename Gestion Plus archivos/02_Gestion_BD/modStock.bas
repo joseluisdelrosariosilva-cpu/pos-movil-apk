@@ -12,7 +12,7 @@ Option Explicit
 ' Busca el producto por código y resta la cantidad vendida.
 ' Actualiza también fondo, ingreso esperado y ganancia esperada.
 
-Public Sub RestarCantidadInventario(codigo As String, Cantidad As Double)
+Public Sub RestarCantidadInventario(codigo As String, cantidad As Double)
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim fila As ListRow
@@ -23,7 +23,7 @@ Public Sub RestarCantidadInventario(codigo As String, Cantidad As Double)
     For Each fila In tbl.ListRows
         If codigo = fila.Range(COL_INV_CODIGO) Then
             ' Restar cantidad actual
-            fila.Range(COL_INV_CANT_ACT) = fila.Range(COL_INV_CANT_ACT) - Cantidad
+            fila.Range(COL_INV_CANT_ACT) = fila.Range(COL_INV_CANT_ACT) - cantidad
             
             ' Recalcular columnas financieras
             fila.Range(COL_INV_FONDO) = fila.Range(COL_INV_CANT_ACT) * fila.Range(COL_INV_PRECIO_C)
@@ -34,9 +34,9 @@ Public Sub RestarCantidadInventario(codigo As String, Cantidad As Double)
     Next fila
 End Sub
 
-' --- ACTUALIZAR STOCK DE PRODUCTO (desde importación) ----------------------
+' --- ACTUALIZAR STOCK DE PRODUCTO (desde importaciï¿½n) ----------------------
 
-Public Function ActualizarStockProducto(codigoProducto As String, Cantidad As Double) As Boolean
+Public Function ActualizarStockProducto(codigoProducto As String, cantidad As Double) As Boolean
     On Error GoTo ErrorHandler
     
     Dim ws As Worksheet
@@ -45,10 +45,10 @@ Public Function ActualizarStockProducto(codigoProducto As String, Cantidad As Do
     
     Set ws = ThisWorkbook.Sheets(HOJA_ALMACEN)
     
-    For i = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For i = 2 To ws.Cells(ws.Rows.count, 1).End(xlUp).Row
         If ws.Cells(i, 2).Value = codigoProducto Then
             stockActual = ws.Cells(i, 6).Value
-            ws.Cells(i, 6).Value = stockActual - Cantidad
+            ws.Cells(i, 6).Value = stockActual - cantidad
             ActualizarStockProducto = True
             Exit Function
         End If
@@ -60,12 +60,12 @@ Public Function ActualizarStockProducto(codigoProducto As String, Cantidad As Do
 ErrorHandler:
     MsgBox "Error al actualizar el stock del producto." & vbCrLf & _
            "Producto: " & codigoProducto & vbCrLf & _
-           "Cantidad: " & Cantidad & vbCrLf & _
+           "Cantidad: " & cantidad & vbCrLf & _
            "Detalle: " & Err.Description, vbExclamation
     ActualizarStockProducto = False
 End Function
 
-' --- FUNCIÓN DE HOJA: ACTUALIZAR ALMACÉN DESDE VENTAS ---------------------
+' --- FUNCIï¿½N DE HOJA: ACTUALIZAR ALMACÉN DESDE VENTAS ---------------------
 
 Public Function ObtenerStockRestante(codigo As String, stockInicial As Double) As Double
     Dim celda As Range
@@ -75,7 +75,7 @@ Public Function ObtenerStockRestante(codigo As String, stockInicial As Double) A
     cantidadVendida = 0
     
     ' Sumar todas las ventas de este producto
-    For Each celda In Hoja8.Range("B5:B" & Hoja8.Range("B" & Rows.Count).End(xlUp).Row)
+    For Each celda In Hoja8.Range("B5:B" & Hoja8.Range("B" & Rows.count).End(xlUp).Row)
         If CStr(celda) = CStr(codigo) Then
             cantidadVendida = cantidadVendida + Hoja8.Range("E" & celda.Row).Value
         End If
@@ -96,7 +96,7 @@ Public Sub ReabastecerProducto()
     Dim rng As Range
     Dim filaSeleccionada As Range
     Dim cantidadStr As String
-    Dim Cantidad As Double
+    Dim cantidad As Double
     Dim stockActual As Double
     Dim stockInicial As Double
     Dim filaTabla As Long
@@ -138,20 +138,66 @@ Public Sub ReabastecerProducto()
         Exit Sub
     End If
     
-    Cantidad = Val(cantidadStr)
+    cantidad = Val(cantidadStr)
     
     ' Sumar a cantidad inicial
     tbl.DataBodyRange.Cells(filaTabla, COL_INV_CANT_INI).Value = _
-        Format(Round(stockInicial + Cantidad, 3), "General Number")
+        Format(Round(stockInicial + cantidad, 3), "General Number")
     tbl.DataBodyRange.Cells(filaTabla, COL_INV_FECHA).Value = Date
     
     Call ForzarActualizacionStock
     
     MsgBox "Reabastecimiento exitoso." & vbCrLf & _
            "Stock anterior: " & stockActual & vbCrLf & _
-           "Cantidad añadida: " & Cantidad & vbCrLf & _
-           "Nuevo stock: " & (stockActual + Cantidad), vbInformation
+           "Cantidad añadida: " & cantidad & vbCrLf & _
+                       "Nuevo stock: " & (stockActual + cantidad), vbInformation
 End Sub
+
+' --- BUSCAR PRODUCTOS EN ALMACEN POR NOMBRE ---------------------------------
+' Busca TODOS los productos cuyo nombre coincida exactamente con nombreProducto.
+' Devuelve un array 2D (1-based): {Codigo, Precio_V, CANT_INI, CANT_ACT, Precio_C}.
+' Si no hay coincidencias, devuelve un array vacio (UBound falla).
+' Util para detectar si un producto elaborado ya existe y para mostrar opciones.
+
+Public Function BuscarProductosEnAlmacenPorNombre(ByVal nombreProducto As String) As Variant
+    Dim ws As Worksheet
+    Dim tbl As ListObject
+    Dim fila As ListRow
+    Dim resultados() As Variant
+    Dim count As Long
+    
+    Set ws = ThisWorkbook.Sheets(HOJA_ALMACEN)
+    Set tbl = ws.ListObjects(TBL_INVENTARIO)
+    
+    ' Primer pase: contar coincidencias
+    count = 0
+    For Each fila In tbl.ListRows
+        If UCase(Trim(fila.Range.Cells(1, COL_INV_NOMBRE).Value)) = UCase(Trim(nombreProducto)) Then
+            count = count + 1
+        End If
+    Next fila
+    
+    If count = 0 Then
+        BuscarProductosEnAlmacenPorNombre = Array()
+        Exit Function
+    End If
+    
+    ' Segundo pase: llenar array
+    ReDim resultados(1 To count, 1 To 5)
+    count = 0
+    For Each fila In tbl.ListRows
+        If UCase(Trim(fila.Range.Cells(1, COL_INV_NOMBRE).Value)) = UCase(Trim(nombreProducto)) Then
+            count = count + 1
+            resultados(count, 1) = fila.Range.Cells(1, COL_INV_CODIGO).Value
+            resultados(count, 2) = fila.Range.Cells(1, COL_INV_PRECIO_V).Value
+            resultados(count, 3) = fila.Range.Cells(1, COL_INV_CANT_INI).Value
+            resultados(count, 4) = fila.Range.Cells(1, COL_INV_CANT_ACT).Value
+            resultados(count, 5) = fila.Range.Cells(1, COL_INV_PRECIO_C).Value
+        End If
+    Next fila
+    
+    BuscarProductosEnAlmacenPorNombre = resultados
+End Function
 
 ' --- FORZAR ACTUALIZACIÓN DE FÓRMULAS DE STOCK ----------------------------
 ' Vuelve a calcular y escribir el stock actual de cada producto
@@ -165,7 +211,7 @@ Public Sub ForzarActualizacionStock()
     
     Application.ScreenUpdating = False
     
-    ultima_fila = Hoja4.Range("B" & Rows.Count).End(xlUp).Row
+    ultima_fila = Hoja4.Range("B" & Rows.count).End(xlUp).Row
     
     For i = 5 To ultima_fila
         codigo = CStr(Hoja4.Range("B" & i).Value)
