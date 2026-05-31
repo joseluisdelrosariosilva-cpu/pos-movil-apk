@@ -24,7 +24,7 @@ Gestion Plus archivos/
 │   │                      #          CargarDescripcionesUnicas (genérica), NavegarAFilaOriginal,
 │   │                      #          BuscarGastos, BuscarVentas, BuscarFacturas
 │   ├── modEliminarRegistros.bas  # Eliminación de registros
-│   ├── modStock.bas       # Actualización de stock y reabastecimiento
+│   ├── modStock.bas       # Actualización de stock, reabastecimiento y búsqueda de productos por nombre
 │   └── modAgregarRegistros.bas  # Inserción de gastos, fechas, facturas, ventas
 ├── 03_Inventario/        # Lógica de inventario
 │   ├── modMermas.bas      # Cálculo de mermas
@@ -47,10 +47,12 @@ Gestion Plus archivos/
 │   │                      # [Fase3] Nuevas: AgregarReceta, EliminarReceta, EliminarIngredientesReceta,
 │   │                      #          EliminarRecetaYIngredientes, AgregarIngredienteReceta,
 │   │                      #          CargarIngredientesReceta (array 2D)
-│   └── modElaboracion.bas # Validación stock, descuento, registro, costos
+│   └── modElaboracion.bas # Validación stock, descuento, registro, costos, abastecimiento
 │                          # [Bugfix Fase3] ValidarStockElaboracion y DescontarStockIngredientes
 │                          # ahora convierten unidades vía modConversor antes de comparar/descontar.
 │                          # RegistrarProductoElaborado acepta código opcional (codigoExterno).
+│                          # [Fase4] AbastecerProductoElaborado: suma stock a producto existente,
+│                          # actualiza precios (Venta directo, Costo promedio ponderado).
 ├── 09_Dashboard/         # Dashboard
 │   └── modDashboard.bas   # Refresco, verificación expiración, formas, ocultar
 ├── 10_Calendario/        # Calendario (antes ModuloCalendario)
@@ -116,7 +118,7 @@ Todos los formularios delegan la lógica de negocio en los módulos reorganizado
 | `ingresar_form.frm` | ✅ Refactorizado | `modValidacionCampos.ValidarVaciosProducto`, `modAgregarRegistros.AgregarProductoUnico/AgregarFecha`, `modGeneradorCodigo` |
 | `ingresar_ingr_nuevo_form.frm` | ✅ Refactorizado | `modValidacionCampos.ValidarVaciosIngredienteNuevo`, `modBusquedas.ComprobarRepeticionIngredienteNuevo/Modificar`, `modCalculosInventario.CalcularPrecioUBase` |
 | `ingresar_ingr_existente_form.frm` | ✅ Refactorizado | `modValidacionCampos.ValidarVaciosIngredienteExistente`, `modConversor.ConvertirUnidad`, `modRecetas.CargarUnidadesPorIngrediente`, `modCalculosInventario.CalcularPrecioUBase` |
-| `Elaborar.frm` | ✅ Refactorizado | `modElaboracion.ValidarStockElaboracion`, `.DescontarStockIngredientes`, `.RegistrarProductoElaborado`, `modRecetas.CargarRecetasEnCombo`, `modGeneradorCodigo`, `modFormateo` |
+| `Elaborar.frm` | ✅ Refactorizado | `modElaboracion.ValidarStockElaboracion`, `.DescontarStockIngredientes`, `.RegistrarProductoElaborado`, `.AbastecerProductoElaborado`, `modRecetas.CargarRecetasEnCombo`, `modGeneradorCodigo`, `modFormateo`, `modStock.BuscarProductosEnAlmacenPorNombre` |
 | `Ingr_Receta.frm` | ✅ Refactorizado | `modRecetas.AgregarReceta/EliminarRecetaYIngredientes/AgregarIngredienteReceta/CargarIngredientesReceta/CargarIngredientesEnCombo/CargarUnidadesPorIngrediente`, `modConversor.ConvertirUnidad`, `modCalculosInventario.ObtenerPrecioPorUnidadBase`, `modValidacionNumerica`, `modFormateo`, `modConstantes` |
 | `facturacion.frm` | ✅ Refactorizado | `modFacturacion.CalcularTotalFacturacion/GenerarIdFactura/RegistrarVentaCompleta`, `modBusquedas.BuscarProductos/CargarTodosLosProductos/ComprobarRepeticionFacturacion`, `modStock.RestarCantidadInventario`, `modAgregarRegistros.AgregarGastoInversion/AgregarFecha`, `modCalculosInventario.CalcularMontoInversion`, `modValidacionNumerica`, `modFormateo`, `modConstantes` |
 | `Busqueda.frm` | ✅ Refactorizado | `modBusquedas.BuscarGastos/CargarDescripcionesUnicas/NavegarAFilaOriginal`, constantes `HOJA_GASTOS`, `TBL_GASTOS`, `COL_GAS_*` |

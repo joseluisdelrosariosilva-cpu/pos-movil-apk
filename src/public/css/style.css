@@ -411,6 +411,61 @@ body {
   font-weight: 600;
 }
 
+/* Selector de fecha para resumen / historial */
+.resumen-fecha-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.resumen-fecha-selector label {
+  font-size: 15px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.resumen-fecha-selector input[type="date"] {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 16px;
+  background-color: var(--bg-input);
+  border: none;
+  border-radius: 40px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.resumen-fecha-selector input[type="date"]:focus {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.resumen-fecha-selector input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Ajuste responsive: en pantallas muy chicas, apilamos */
+@media (max-width: 360px) {
+  .resumen-fecha-selector {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+}
+
 .header h1 {
   font-size: 28px;
   font-weight: 500;
@@ -964,6 +1019,11 @@ body {
   animation: modalPop 0.18s ease-out;
 }
 
+/* Variante más ancha para historial */
+.modal-card-historial {
+  width: min(500px, 100%);
+}
+
 .modal-card h2 {
   margin-bottom: 10px;
   color: var(--text-primary);
@@ -1004,6 +1064,17 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+/* Acción centrada (1 botón) */
+.modal-actions-center {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.modal-actions-center .modal-btn {
+  min-width: 140px;
 }
 
 .modal-btn {
@@ -1174,6 +1245,81 @@ body {
   cursor: not-allowed;
 }
 
+/* ===== SINCRONIZACIÓN: IP MANUAL ===== */
+
+/* Vista IP manual dentro del modal */
+#syncManualIPView {
+  animation: fadeInView 0.2s ease-out;
+}
+
+#syncManualIPView .form-group {
+  margin-top: 6px;
+}
+
+/* Preview de URL que se arma en vivo */
+.sync-url-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.sync-url-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.sync-url-preview.visible {
+  display: flex;
+}
+
+.sync-url-preview.hidden {
+  display: none;
+}
+
+/* Mensaje de error de IP */
+.sync-ip-error {
+  font-size: 13px;
+  color: var(--error);
+  margin-top: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(242, 139, 130, 0.1);
+  border: 1px solid rgba(242, 139, 130, 0.25);
+  animation: shakeError 0.3s ease-out;
+}
+
+.sync-ip-error.hidden {
+  display: none;
+}
+
+/* Input en estado error */
+#inputManualIP.input-error {
+  box-shadow: 0 0 0 2px var(--error);
+}
+
+/* Animación de shake para errores */
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* Animación de fade para toggle de vistas */
+@keyframes fadeInView {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 480px) {
   .producto-info h3 {
     font-size: 16px;
@@ -1182,9 +1328,10 @@ body {
 }
 
 /* ===== HISTORIAL DE VENTAS ===== */
-
 .historial-contenido {
-  padding: 10px;
+  padding: 10px 0;
+  max-height: 55vh;
+  overflow-y: auto;
 }
 
 .historial-factura {

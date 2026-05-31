@@ -2002,23 +2002,104 @@ window.sincronizar = async function() {
       };
     }
 
-    // Manejar botón IP Manual
+    // Referencias a elementos de IP Manual
+    var syncScanView = document.getElementById("syncScanView");
+    var syncManualIPView = document.getElementById("syncManualIPView");
+    var inputManualIP = document.getElementById("inputManualIP");
+    var btnConfirmManualIP = document.getElementById("btnConfirmManualIP");
+    var btnCancelManualIP = document.getElementById("btnCancelManualIP");
+    var syncIPError = document.getElementById("syncIPError");
+    var syncURLPreview = document.getElementById("syncURLPreview");
+    var syncURLText = document.getElementById("syncURLText");
+
+    // Validar formato IPv4
+    function esIPValida(ip) {
+      if (!ip || ip.length < 7) return false;
+      var partes = ip.trim().split(".");
+      if (partes.length !== 4) return false;
+      return partes.every(function(octeto) {
+        var num = Number(octeto);
+        return !isNaN(num) && octeto.length > 0 && num >= 0 && num <= 255
+          && octeto === String(num); // evitar "01." como válido
+      });
+    }
+
+    // Actualizar preview de URL en vivo
+    function actualizarPreviewIP() {
+      var ip = inputManualIP.value.trim();
+      if (ip.length > 0) {
+        syncURLText.textContent = "http://" + ip + ":3000";
+        syncURLPreview.classList.remove("hidden");
+      } else {
+        syncURLPreview.classList.add("hidden");
+      }
+    }
+
+    // Limpiar estado de error
+    function limpiarErrorIP() {
+      syncIPError.classList.add("hidden");
+      inputManualIP.classList.remove("input-error");
+    }
+
+    // Manejar botón IP Manual → mostrar vista de ingreso
     if (btnManualIP) {
       btnManualIP.onclick = function() {
-        var ipManual = prompt("Introduce la IP del servidor (ej. 10.225.81.54):", "192.168.1.");
-        if (ipManual) {
-          window.SERVER_URL = "http://" + ipManual + ":3000";
-          serverUrlCacheado = window.SERVER_URL;
-          if (DB.guardarServidorCacheado) {
-            DB.guardarServidorCacheado(window.SERVER_URL);
-          }
-          manualIPSet = true;
-          syncCancelled = true;
-          cancelarEscaneo = true;
-          if (modalSync) modalSync.classList.add("hidden");
-          logSyncAPK("Servidor configurado manualmente: " + window.SERVER_URL);
-          mostrarMensaje("✅ IP manual: " + window.SERVER_URL, "exito", 2000);
+        limpiarErrorIP();
+        inputManualIP.value = "";
+        syncURLPreview.classList.add("hidden");
+        if (syncScanView) syncScanView.classList.add("hidden");
+        if (syncManualIPView) syncManualIPView.classList.remove("hidden");
+        inputManualIP.focus();
+      };
+    }
+
+    // Preview en vivo mientras escribe
+    if (inputManualIP) {
+      inputManualIP.addEventListener("input", function() {
+        limpiarErrorIP();
+        actualizarPreviewIP();
+      });
+
+      // Enter en el input = confirmar
+      inputManualIP.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          btnConfirmManualIP.click();
         }
+      });
+    }
+
+    // Confirmar IP Manual
+    if (btnConfirmManualIP) {
+      btnConfirmManualIP.onclick = function() {
+        var ipIngresada = inputManualIP.value.trim();
+        if (!esIPValida(ipIngresada)) {
+          syncIPError.classList.remove("hidden");
+          inputManualIP.classList.add("input-error");
+          inputManualIP.focus();
+          return;
+        }
+
+        window.SERVER_URL = "http://" + ipIngresada + ":3000";
+        serverUrlCacheado = window.SERVER_URL;
+        if (DB.guardarServidorCacheado) {
+          DB.guardarServidorCacheado(window.SERVER_URL);
+        }
+        manualIPSet = true;
+        syncCancelled = true;
+        cancelarEscaneo = true;
+        if (modalSync) modalSync.classList.add("hidden");
+        logSyncAPK("Servidor configurado manualmente: " + window.SERVER_URL);
+        mostrarMensaje("✅ IP manual: " + window.SERVER_URL, "exito", 2000);
+      };
+    }
+
+    // Volver a vista de escaneo
+    if (btnCancelManualIP) {
+      btnCancelManualIP.onclick = function() {
+        limpiarErrorIP();
+        if (syncManualIPView) syncManualIPView.classList.add("hidden");
+        if (syncScanView) syncScanView.classList.remove("hidden");
       };
     }
 
