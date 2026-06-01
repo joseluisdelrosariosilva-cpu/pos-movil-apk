@@ -91,3 +91,52 @@ export const getProductos = async (req, res) => {
     });
   }
 };
+
+export const getRecetas = async (req, res) => {
+  try {
+    const { workbook } = await abrirExcel();
+
+    const hoja = obtenerHojaPorNombre(workbook, "Recetas");
+
+    const rango = hoja.usedRange();
+    if (!rango) {
+      return res
+        .status(404)
+        .json({ error: "No hay datos en la hoja de recetas" });
+    }
+
+    const datos = rango.value();
+
+    if (datos.length < 2) {
+      return res.status(404).json({ error: "No hay recetas cargadas" });
+    }
+
+    const encabezados = datos[0];
+
+    const recetas = datos
+      .slice(1)
+      .filter((fila) => filaTieneDatos(fila))
+      .map((fila) => {
+        const receta = {};
+
+        encabezados.forEach((encabezado, i) => {
+          const campo = normalizarCampo(encabezado);
+          receta[campo] =
+            fila[i] !== undefined && fila[i] !== "" ? fila[i] : null;
+        });
+
+        return receta;
+      });
+
+    res.json({
+      total: recetas.length,
+      recetas: recetas,
+    });
+  } catch (error) {
+    console.error("❌ Error en getRecetas:", error.message);
+    res.status(500).json({
+      error: "Error al obtener recetas",
+      detalle: error.message,
+    });
+  }
+};

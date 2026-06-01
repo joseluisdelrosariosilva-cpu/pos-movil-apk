@@ -22,6 +22,9 @@ Public Sub SincronizarProductosEnDatos()
     Dim arrOut() As Variant
     Dim i As Long, numFilas As Long
     
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    
     On Error GoTo ErrHandler
     
     paso = "Inicializar referencias"
@@ -38,9 +41,6 @@ Public Sub SincronizarProductosEnDatos()
     
     paso = "Obtener hoja destino"
     Set wsDestino = wbDestino.Worksheets("Productos")
-    
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
     
     paso = "Leer tabla INVENTARIO"
     Set tbl = wsOrigen.ListObjects(TBL_INVENTARIO)
@@ -88,6 +88,101 @@ ErrHandler:
     On Error GoTo 0
     
     MsgBox "Error al sincronizar productos." & vbCrLf & _
+           "Paso: " & paso & vbCrLf & _
+           "Error: " & Err.Description, vbCritical
+End Sub
+
+' --- SINCRONIZAR RECETAS HACIA datos.xlsx -----------------------------------
+
+Public Sub SincronizarRecetasEnDatos()
+    Dim wbOrigen As Workbook
+    Dim wsOrigen As Worksheet
+    Dim wbDestino As Workbook
+    Dim wsDestino As Worksheet
+    Dim rutaDestino As String
+    Dim paso As String
+    Dim abiertoPorMacro As Boolean
+    Dim tbl As ListObject
+    Dim dataArr As Variant
+    Dim arrOut() As Variant
+    Dim i As Long, numFilas As Long
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    
+    On Error GoTo ErrHandler
+    
+    paso = "Inicializar referencias"
+    Set wbOrigen = ThisWorkbook
+    Set wsOrigen = wbOrigen.Worksheets(HOJA_RECETAS)
+    rutaDestino = wbOrigen.Path & "\" & CARPETA_WEBAPP & ARCHIVO_DATOS
+    
+    paso = "Abrir libro destino"
+    Set wbDestino = GetWorkbookByFullName(rutaDestino)
+    If wbDestino Is Nothing Then
+        Set wbDestino = Workbooks.Open(Filename:=rutaDestino, ReadOnly:=False)
+        abiertoPorMacro = True
+    End If
+    
+    paso = "Obtener hoja destino"
+    On Error Resume Next
+    Set wsDestino = wbDestino.Worksheets("Recetas")
+    If wsDestino Is Nothing Then
+        ' Crear la hoja si no existe
+        Set wsDestino = wbDestino.Worksheets.Add(After:=wbDestino.Worksheets(wbDestino.Worksheets.Count))
+        wsDestino.Name = "Recetas"
+        wsDestino.Range("A1").Value = "Nombre"
+        wsDestino.Range("B1").Value = "CantLote"
+        wsDestino.Range("C1").Value = "PrecioVenta"
+        wsDestino.Range("D1").Value = "PrecioCosto"
+    End If
+    On Error GoTo ErrHandler
+    
+    paso = "Leer tabla Recetas"
+    Set tbl = wsOrigen.ListObjects(TBL_RECETAS)
+    
+    If tbl.DataBodyRange Is Nothing Then GoTo Finalizar
+    
+    dataArr = tbl.DataBodyRange.Value2
+    numFilas = UBound(dataArr, 1)
+    
+    ' Mapeo: Col1 -> A(Nombre), Col2 -> B(CantLote), Col4 -> C(PrecioVenta)
+    paso = "Mapear columnas"
+    ReDim arrOut(1 To numFilas, 1 To 4)
+    For i = 1 To numFilas
+        arrOut(i, 1) = dataArr(i, COL_REC_NOMBRE)
+        arrOut(i, 2) = dataArr(i, COL_REC_LOTE)
+        arrOut(i, 3) = dataArr(i, COL_REC_PRECIO_UNID)
+        arrOut(i, 4) = dataArr(i, COL_REC_INV_UNIDAD)
+    Next i
+    
+    paso = "Volcar datos al destino"
+    wsDestino.Range("A2:D" & wsDestino.Rows.Count).ClearContents
+    wsDestino.Range("A2").Resize(numFilas, 4).Value = arrOut
+    
+Finalizar:
+    paso = "Guardar y cerrar"
+    wbDestino.Save
+    
+    If abiertoPorMacro Then
+        wbDestino.Close SaveChanges:=False
+    End If
+    
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+    
+ErrHandler:
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    
+    On Error Resume Next
+    If Not wbDestino Is Nothing Then
+        If abiertoPorMacro Then wbDestino.Close SaveChanges:=False
+    End If
+    On Error GoTo 0
+    
+    MsgBox "Error al sincronizar recetas." & vbCrLf & _
            "Paso: " & paso & vbCrLf & _
            "Error: " & Err.Description, vbCritical
 End Sub

@@ -110,14 +110,15 @@ const sumarStockProducto = (hojaProductos, codigo, cantidad) => {
 // ============================================
 export const sincronizarCompleto = async (req, res) => {
   try {
-    const { productos, abastecimientos, ventas, mermas, gastos } = req.body;
+    const { productos, abastecimientos, ventas, mermas, gastos, elaboraciones } = req.body;
 
     console.log("🔄 [sync-completo] Recibido batch:");
     console.log(`   ├─ Productos:       ${productos?.length || 0}`);
     console.log(`   ├─ Abastecimientos: ${abastecimientos?.length || 0}`);
     console.log(`   ├─ Ventas:          ${ventas?.length || 0}`);
     console.log(`   ├─ Mermas:          ${mermas?.length || 0}`);
-    console.log(`   └─ Gastos:          ${gastos?.length || 0}`);
+    console.log(`   ├─ Gastos:          ${gastos?.length || 0}`);
+    console.log(`   └─ Elaboraciones:   ${elaboraciones?.length || 0}`);
 
     // Si no viene nada, responder OK temprano
     if (
@@ -125,7 +126,8 @@ export const sincronizarCompleto = async (req, res) => {
       (!abastecimientos || !abastecimientos.length) &&
       (!ventas || !ventas.length) &&
       (!mermas || !mermas.length) &&
-      (!gastos || !gastos.length)
+      (!gastos || !gastos.length) &&
+      (!elaboraciones || !elaboraciones.length)
     ) {
       return res.json({
         success: true,
@@ -154,6 +156,7 @@ export const sincronizarCompleto = async (req, res) => {
       let countVentas = 0;
       let countMermas = 0;
       let countGastos = 0;
+      let countElaboraciones = 0;
 
       // ════════════════════════════════════════
       // PASO 1: PRODUCTOS NUEVOS
@@ -343,6 +346,28 @@ export const sincronizarCompleto = async (req, res) => {
       }
 
       // ════════════════════════════════════════
+      // PASO 6: ELABORACIONES
+      // ════════════════════════════════════════
+      if (elaboraciones && elaboraciones.length) {
+        let hojaElaboracion;
+        try {
+          hojaElaboracion = obtenerHojaPorNombre(workbook, "Elaboracion");
+        } catch (_) {
+          hojaElaboracion = workbook.addSheet("Elaboracion");
+          hojaElaboracion.cell("A1").value("NombreReceta");
+          hojaElaboracion.cell("B1").value("Lotes");
+        }
+
+        for (const elab of elaboraciones) {
+          const filaEl = primeraFilaVacia(hojaElaboracion, "A");
+          hojaElaboracion.cell(`A${filaEl}`).value(elab.nombre_receta);
+          hojaElaboracion.cell(`B${filaEl}`).value(Number(elab.lotes || 0));
+          countElaboraciones++;
+        }
+        console.log(`   ✅ ${countElaboraciones} elaboraciones procesadas`);
+      }
+
+      // ════════════════════════════════════════
       // GUARDAR TODO (un solo write)
       // ════════════════════════════════════════
       await guardarExcel(workbook);
@@ -354,6 +379,7 @@ export const sincronizarCompleto = async (req, res) => {
           ventas: countVentas,
           mermas: countMermas,
           gastos: countGastos,
+          elaboraciones: countElaboraciones,
         },
         remap: {
           codigos: remapCodigos,

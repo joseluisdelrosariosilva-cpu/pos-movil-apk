@@ -38,6 +38,7 @@ Public Sub ImportarVentas()
     Call ImportarEntradas
     Call ActualizarInventarioDesdeAbastecimiento
     Call ProcesarMermas
+    Call ProcesarElaboraciones
     Call ImportarGastos
     
     Application.ScreenUpdating = False
@@ -468,6 +469,113 @@ Public Sub ActivarPOSMovil()
     
 MostrarFormulario:
     Call SincronizarProductosEnDatos
+    Call SincronizarRecetasEnDatos
     Call OcultarInterfaz
     frmPOSMovil.Show vbModeless
 End Sub
+
+Private Sub ProcesarElaboraciones()
+    On Error GoTo ErrorHandler
+    
+    Dim wb As Workbook
+    Dim wsElaboracion As Worksheet
+    Dim ruta As String
+    Dim ultimaFila As Long
+    Dim i As Long
+    Dim nombreReceta As String
+    Dim lotes As Double
+    Dim faltantes As String
+    Dim procesadas As Long
+    Dim pendientes As Long
+    Dim mensajePendientes As String
+    
+    ruta = ThisWorkbook.Path & "\" & CARPETA_WEBAPP & ARCHIVO_DATOS
+    If Dir(ruta) = "" Then Exit Sub
+    
+    Set wb = Workbooks.Open(ruta, ReadOnly:=False)
+    
+    On Error Resume Next
+    Set wsElaboracion = wb.Sheets("Elaboracion")
+    On Error GoTo ErrorHandler
+    
+    If wsElaboracion Is Nothing Then
+        wb.Close False
+        Exit Sub
+    End If
+    
+    If wsElaboracion.Cells(2, 1).Value = "" Then
+        wb.Save
+        wb.Close False
+        Exit Sub
+    End If
+    
+    Application.ScreenUpdating = False
+    
+    ultimaFila = wsElaboracion.Cells(wsElaboracion.Rows.Count, 1).End(xlUp).Row
+    procesadas = 0
+    pendientes = 0
+    mensajePendientes = ""
+    
+    ' Iterar de abajo hacia arriba para borrar filas sin problemas
+    For i = ultimaFila To 2 Step -1
+        nombreReceta = CStr(wsElaboracion.Cells(i, 1).Value)
+        lotes = Val(wsElaboracion.Cells(i, 2).Value)
+        
+        If nombreReceta = "" Or lotes <= 0 Then
+            ' Fila inválida, borrarla igual
+            wsElaboracion.Rows(i).Delete
+            GoTo Siguiente
+        End If
+        
+        ' 1. VALIDAR si hay stock suficiente de ingredientes
+        faltantes = ""
+        On Error Resume Next
+        If modElaboracion.ValidarStockElaboracion(nombreReceta, lotes, faltantes) Then
+            On Error GoTo ErrorHandler
+            
+            ' 2. Stock suficiente ? descontar y borrar la fila
+            Call modElaboracion.DescontarStockIngredientes(nombreReceta, lotes)
+            wsElaboracion.Rows(i).Delete
+            procesadas = procesadas + 1
+        Else
+            On Error GoTo ErrorHandler
+            
+            ' 3. Stock insuficiente ? dejar la fila para después
+            pendientes = pendientes + 1
+            mensajePendientes = mensajePendientes & _
+                "- " & nombreReceta & " x" & lotes & " lote(s)" & vbCrLf & _
+                "  " & Replace(faltantes, vbCrLf, vbCrLf & "  ") & vbCrLf
+        End If
+        
+Siguiente:
+    Next i
+    
+    wb.Save
+    wb.Close False
+    
+    Application.ScreenUpdating = True
+    
+    ' Mostrar resumen al usuario
+    If procesadas > 0 And pendientes = 0 Then
+        MsgBox "Elaboraciones procesadas correctamente: " & procesadas, vbInformation
+    ElseIf procesadas > 0 And pendientes > 0 Then
+        MsgBox "Elaboraciones procesadas: " & procesadas & vbCrLf & vbCrLf & _
+               "QUEDARON PENDIENTES (" & pendientes & ") por stock insuficiente:" & vbCrLf & _
+               vbCrLf & mensajePendientes & vbCrLf & _
+               "Agregá los ingredientes faltantes y volvé a importar.", _
+               vbExclamation
+    ElseIf procesadas = 0 And pendientes > 0 Then
+        MsgBox "NINGUNA elaboración pudo procesarse por stock insuficiente:" & vbCrLf & _
+               vbCrLf & mensajePendientes & vbCrLf & _
+               "Agregá los ingredientes faltantes y volvé a importar.", _
+               vbExclamation
+    End If
+    
+    Exit Sub
+    
+ErrorHandler:
+    On Error Resume Next
+    If Not wb Is Nothing Then wb.Close False
+    On Error GoTo 0
+End Sub
+

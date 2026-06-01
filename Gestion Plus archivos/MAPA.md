@@ -40,8 +40,17 @@ Gestion Plus archivos/
 │   └── modRespaldos.bas   # Respaldo, respaldo completo, diario, final
 ├── 07_POS_Movil/         # Servidor y sincronización (extraído de serverControl.bas)
 │   ├── modServerControl.bas
-│   ├── modImportacion.bas
+│   ├── modImportacion.bas  # Importa: entradas, abastecimientos, mermas,
+│   │                       #   elaboraciones (descuenta ingredientes vía
+│   │                       #   modElaboracion.DescontarStockIngredientes),
+│   │                       #   gastos y ventas desde datos.xlsx.
+│   │                       #   Si falta stock de ingredientes, deja la fila
+│   │                       #   en la hoja "Elaboracion" para próxima importación.
 │   └── modSincronizacion.bas
+│                          # [Fase4] SincronizarRecetasEnDatos: escribe recetas desde
+│                          # "Elaboración de Productos" hacia datos.xlsx hoja "Recetas"
+│                          # (Nombre, CantLote, PrecioVenta, PrecioCosto).
+│                          # Se ejecuta al activar servidor. PrecioCosto = Inversión/Unidad.
 ├── 08_Recetas/           # Recetas y elaboración
 │   ├── modRecetas.bas     # CRUD de recetas, búsqueda por ingrediente
 │   │                      # [Fase3] Nuevas: AgregarReceta, EliminarReceta, EliminarIngredientesReceta,

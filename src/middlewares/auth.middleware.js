@@ -25,9 +25,11 @@ const RUTAS_FLEXIBLES = [
   "/productos",
   "/ventas",
   "/resumen",
+  "/recetas",
   "/api/productos",
   "/api/ventas",
   "/api/resumen",
+  "/api/recetas",
   "/sync/completo",
   "/api/sync/completo",
 ];

@@ -126,12 +126,13 @@ async function contarPendientesDesglose() {
   d.entradas       = DB.contarEntradaProductosPendientes ? await DB.contarEntradaProductosPendientes() : 0;
   d.abastecimientos = DB.contarAbastecerPendientes    ? await DB.contarAbastecerPendientes()     : 0;
   d.gastos         = DB.contarGastosPendientes        ? await DB.contarGastosPendientes()         : 0;
+  d.elaboraciones  = DB.contarElaboracionesPendientes  ? await DB.contarElaboracionesPendientes()  : 0;
   return d;
 }
 
 async function contarPendientesTotales() {
   var d = await contarPendientesDesglose();
-  return d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos;
+  return d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos + d.elaboraciones;
 }
 
 async function actualizarPanelEstado() {
@@ -144,7 +145,7 @@ async function actualizarPanelEstado() {
   if (estadoPendientesEl) {
     try {
       var d = await contarPendientesDesglose();
-      var total = d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos;
+      var total = d.ventas + d.mermas + d.entradas + d.abastecimientos + d.gastos + d.elaboraciones;
       estadoPendientesEl.textContent = String(total);
 
       // Si el desglose está abierto, refrescar sin repetir consultas
@@ -292,6 +293,52 @@ try {
     mostrarMensaje("Sin conexion", "warning");
     productosContainer.innerHTML = '<p class="info">Sin conexion.<br>Activa el servidor.</p>';
     await actualizarPanelEstado();
+  }
+}
+
+// ============================================
+// CARGAR RECETAS DESDE EL SERVIDOR
+// ============================================
+async function cargarRecetas() {
+  console.log("📡 Cargando recetas...");
+
+  var serverUrl = obtenerUrlServidor();
+  var fetchUrl = serverUrl + "/api/recetas";
+
+  try {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+
+    var response = await fetch(fetchUrl, {
+      method: "GET",
+      headers: { "x-session-token": window.SESSION_TOKEN || "" },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      var data = await response.json();
+      var recetas = Array.isArray(data) ? data : (data.recetas || []);
+
+      if (recetas.length > 0 && dbInicializado && DB.syncRecetasLocal) {
+        await DB.syncRecetasLocal(recetas);
+        console.log("✅ " + recetas.length + " recetas sincronizadas");
+      } else {
+        console.log("📡 Sin recetas para sincronizar");
+      }
+    } else {
+      throw new Error("HTTP " + response.status);
+    }
+  } catch (e) {
+    var errorMsg = e.name === "AbortError" ? "Timeout" : e.message;
+    console.log("⚠️ Error cargando recetas:", errorMsg);
+
+    // Fallback: cargar desde SQLite
+    if (dbInicializado && DB.getRecetasLocal) {
+      var locales = await DB.getRecetasLocal();
+      console.log("📦 Recetas offline: " + (locales.length || 0));
+    }
   }
 }
 
@@ -1159,6 +1206,317 @@ document.addEventListener("DOMContentLoaded", function() {
         if (dropdown) dropdown.classList.add("hidden");
       }, 200);
     });
+  }
+});
+
+// ============================================
+// ELABORAR (producir lotes de una receta)
+// ============================================
+
+window.mostrarElaborar = async function() {
+  var modal = document.getElementById("modalElaborar");
+  var menu = document.getElementById("menuDesplegable");
+  if (!modal) return;
+  if (menu) menu.classList.add("hidden");
+
+  // Limpiar búsqueda anterior
+  var searchInput = document.getElementById("elabRecetaSearch");
+  var dropdown = document.getElementById("elabRecetaDropdown");
+  var nombreInput = document.getElementById("elabRecetaNombre");
+  var infoDiv = document.getElementById("elabRecetaInfo");
+  var totalPreview = document.getElementById("elabTotalPreview");
+
+  if (searchInput) searchInput.value = "";
+  if (dropdown) {
+    dropdown.innerHTML = "";
+    dropdown.classList.add("hidden");
+  }
+  if (nombreInput) nombreInput.value = "";
+  if (infoDiv) infoDiv.innerHTML = "";
+  if (totalPreview) totalPreview.classList.add("hidden");
+
+  // Resetear cantidad de lotes
+  var lotesInput = document.getElementById("elabLotes");
+  if (lotesInput) lotesInput.value = "1";
+
+  modal.classList.remove("hidden");
+  if (searchInput) searchInput.focus();
+};
+
+function cerrarModalElaborar() {
+  var modal = document.getElementById("modalElaborar");
+  if (modal) modal.classList.add("hidden");
+  var dropdown = document.getElementById("elabRecetaDropdown");
+  if (dropdown) dropdown.classList.add("hidden");
+}
+
+// Filtrar recetas y mostrar dropdown
+// Variable global para almacenar receta seleccionada (datos completos)
+var recetaSeleccionada = null;
+
+function filtrarRecetasElaborar(termino) {
+  var dropdown = document.getElementById("elabRecetaDropdown");
+  if (!dropdown) return;
+
+  termino = termino.toLowerCase().trim();
+
+  // Obtener recetas desde DB
+  DB.getRecetasLocal().then(function(recetas) {
+    if (!recetas || recetas.length === 0) {
+      dropdown.innerHTML = '<div class="dropdown-item" style="color: var(--text-secondary);">No hay recetas cargadas. Sincronizá primero.</div>';
+      dropdown.classList.remove("hidden");
+      return;
+    }
+
+    // Filtrar
+    var resultados = [];
+    for (var i = 0; i < recetas.length; i++) {
+      var r = recetas[i];
+      var nombre = (r.nombre || "").toLowerCase();
+      if (nombre.includes(termino)) {
+        resultados.push(r);
+      }
+    }
+
+    // Mostrar resultados
+    dropdown.innerHTML = "";
+    if (resultados.length === 0) {
+      dropdown.innerHTML = '<div class="dropdown-item" style="color: var(--text-secondary);">No se encontraron recetas</div>';
+    } else {
+      for (let j = 0; j < resultados.length; j++) {
+        const r = resultados[j];
+        const item = document.createElement("div");
+        item.className = "dropdown-item";
+        item.innerHTML = r.nombre + ' <span style="color: var(--text-secondary); font-size: 12px;">(x lote: ' + formatearNumero(r.cant_lote) + 'u - $' + formatearNumero(r.precio_venta) + ')</span>';
+        item.dataset.nombre = r.nombre;
+        item.dataset.cantLote = r.cant_lote;
+        item.dataset.precioVenta = r.precio_venta;
+        item.dataset.precioCosto = r.precio_costo;
+        item.addEventListener("click", function() {
+          seleccionarRecetaElaborar(
+            this.dataset.nombre,
+            parsearNumero(this.dataset.cantLote),
+            parsearNumero(this.dataset.precioVenta),
+            parsearNumero(this.dataset.precioCosto)
+          );
+        });
+        dropdown.appendChild(item);
+      }
+    }
+
+    dropdown.classList.remove("hidden");
+  }).catch(function(err) {
+    console.error("❌ Error cargando recetas:", err);
+    dropdown.innerHTML = '<div class="dropdown-item" style="color: var(--error);">Error al cargar recetas</div>';
+    dropdown.classList.remove("hidden");
+  });
+}
+
+// Seleccionar receta del dropdown
+function seleccionarRecetaElaborar(nombre, cantLote, precioVenta, precioCosto) {
+  var nombreInput = document.getElementById("elabRecetaNombre");
+  var searchInput = document.getElementById("elabRecetaSearch");
+  var infoDiv = document.getElementById("elabRecetaInfo");
+  var dropdown = document.getElementById("elabRecetaDropdown");
+
+  recetaSeleccionada = {
+    nombre: nombre,
+    cant_lote: cantLote,
+    precio_venta: precioVenta,
+    precio_costo: precioCosto,
+  };
+
+  if (nombreInput) nombreInput.value = nombre;
+  if (searchInput) searchInput.value = nombre;
+  if (infoDiv) {
+    infoDiv.innerHTML = '<strong>' + nombre + '</strong>' +
+      '<div class="stock-info">💰 Precio venta: $' + formatearNumero(precioVenta) +
+      ' | 📦 Por lote: ' + formatearNumero(cantLote) + ' unidades</div>';
+  }
+  if (dropdown) dropdown.classList.add("hidden");
+
+  // Actualizar preview de total
+  actualizarTotalPreview();
+}
+
+function actualizarTotalPreview() {
+  var lotesInput = document.getElementById("elabLotes");
+  var totalPreview = document.getElementById("elabTotalPreview");
+  var totalCantidad = document.getElementById("elabTotalCantidad");
+
+  if (!recetaSeleccionada || !lotesInput || !totalPreview || !totalCantidad) return;
+
+  var lotes = parseInt(lotesInput.value) || 0;
+  if (lotes > 0 && recetaSeleccionada.cant_lote > 0) {
+    var total = redondear3(recetaSeleccionada.cant_lote * lotes);
+    totalCantidad.textContent = formatearNumero(total);
+    totalPreview.classList.remove("hidden");
+  } else {
+    totalPreview.classList.add("hidden");
+  }
+}
+
+window.confirmarElaborar = async function() {
+  if (!recetaSeleccionada) {
+    mostrarMensaje("Seleccioná una receta", "error");
+    return;
+  }
+
+  var lotesInput = document.getElementById("elabLotes");
+  if (!lotesInput) return;
+
+  var lotes = parseInt(lotesInput.value) || 0;
+  if (lotes <= 0) {
+    mostrarMensaje("La cantidad de lotes debe ser mayor a 0", "error");
+    return;
+  }
+
+  var nombreReceta = recetaSeleccionada.nombre;
+  var cantLote = recetaSeleccionada.cant_lote;
+  var precioVenta = recetaSeleccionada.precio_venta;
+  var precioCosto = recetaSeleccionada.precio_costo;
+  var cantidadProducida = redondear3(cantLote * lotes);
+
+  try {
+    mostrarMensaje("Procesando elaboración...", "info");
+
+    // PASO 1: Guardar en elaboraciones_pending (registro local)
+    var guardadoElab = await DB.guardarElaboracionOffline({
+      nombre_receta: nombreReceta,
+      lotes: lotes,
+      cantidad_producida: cantidadProducida,
+      precio_venta: precioVenta,
+    });
+
+    if (!guardadoElab) {
+      throw new Error("No se pudo guardar el registro de elaboración");
+    }
+
+    // PASO 2: Buscar si el nombre de la receta existe en productos de venta
+    var productoExistente = null;
+    for (var i = 0; i < productos.length; i++) {
+      var p = productos[i];
+      var nombreProd = (p.producto || p.nombre || "").toLowerCase().trim();
+      if (nombreProd === nombreReceta.toLowerCase().trim()) {
+        productoExistente = p;
+        break;
+      }
+    }
+
+    if (productoExistente) {
+      // --- LÓGICA DE ABASTECER (producto ya existe) ---
+      console.log("🧪 Elaborar: receta '" + nombreReceta + "' encontrada como producto '" + productoExistente.codigo + "'. Sumando stock...");
+
+      var guardadoAbast = await DB.guardarAbastecerOffline({
+        codigo: productoExistente.codigo,
+        nombre: productoExistente.producto || productoExistente.nombre,
+        cantidad: cantidadProducida,
+      });
+
+      if (!guardadoAbast) {
+        throw new Error("No se pudo actualizar el stock del producto existente");
+      }
+
+      // Recargar productos desde SQLite
+      productos = await DB.getProductosLocal();
+      renderizarProductos(productos);
+
+    } else {
+      // --- LÓGICA DE NUEVO PRODUCTO (receta no existe como producto) ---
+      console.log("🧪 Elaborar: receta '" + nombreReceta + "' NO encontrada como producto. Creando nuevo producto...");
+
+      // Generar código automático
+      var nuevoCodigo = await DB.getUltimoCodigoProducto();
+
+      var guardadoNuevo = await DB.guardarEntradaProductoCompleto({
+        codigo: nuevoCodigo,
+        nombre: nombreReceta,
+        cantidad: cantidadProducida,
+        precioVenta: precioVenta,
+        precioCosto: precioCosto,
+      });
+
+      if (!guardadoNuevo) {
+        throw new Error("No se pudo crear el nuevo producto desde la receta");
+      }
+
+      // Agregar a la lista en memoria local
+      productos.push({
+        codigo: nuevoCodigo,
+        producto: nombreReceta,
+        nombre: nombreReceta,
+        precio: precioVenta,
+        disponibilidad: cantidadProducida,
+      });
+      renderizarProductos(productos);
+    }
+
+    // Cerrar modal
+    cerrarModalElaborar();
+    recetaSeleccionada = null;
+
+    // Actualizar indicadores
+    await actualizarPanelEstado();
+    await actualizarIndicadorSync();
+
+    mostrarMensaje(
+      "✅ Elaborado: " + nombreReceta + " (" + lotes + " lote(s) = " + formatearNumero(cantidadProducida) + " unidades)",
+      "exito",
+      4000
+    );
+
+  } catch (error) {
+    console.error("❌ Error en elaborar:", error);
+    mostrarMensaje("Error: " + error.message, "error");
+  }
+};
+
+// ============================================
+// EVENT LISTENERS PARA MODAL ELABORAR
+// ============================================
+document.addEventListener("DOMContentLoaded", function() {
+  var cancelarBtn = document.getElementById("btnCancelarElaborar");
+  if (cancelarBtn) {
+    cancelarBtn.addEventListener("click", cerrarModalElaborar);
+  }
+
+  var confirmarBtn = document.getElementById("btnConfirmarElaborar");
+  if (confirmarBtn) {
+    confirmarBtn.addEventListener("click", function() {
+      window.confirmarElaborar();
+    });
+  }
+
+  var modalElaborar = document.getElementById("modalElaborar");
+  if (modalElaborar) {
+    modalElaborar.addEventListener("click", function(e) {
+      if (e.target === modalElaborar) cerrarModalElaborar();
+    });
+  }
+
+  // Event listener para búsqueda de recetas
+  var searchInput = document.getElementById("elabRecetaSearch");
+  if (searchInput) {
+    searchInput.addEventListener("input", function() {
+      filtrarRecetasElaborar(this.value);
+    });
+
+    searchInput.addEventListener("focus", function() {
+      filtrarRecetasElaborar(this.value);
+    });
+
+    searchInput.addEventListener("blur", function() {
+      setTimeout(function() {
+        var dropdown = document.getElementById("elabRecetaDropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+      }, 200);
+    });
+  }
+
+  // Event listener para actualizar preview al cambiar lotes
+  var lotesInput = document.getElementById("elabLotes");
+  if (lotesInput) {
+    lotesInput.addEventListener("input", actualizarTotalPreview);
   }
 });
 
@@ -2152,6 +2510,7 @@ window.sincronizar = async function() {
         if (s.ventas > 0)          parts.push(s.ventas + " ventas");
         if (s.mermas > 0)          parts.push(s.mermas + " mermas");
         if (s.gastos > 0)          parts.push(s.gastos + " gastos");
+        if (s.elaboraciones > 0)   parts.push(s.elaboraciones + " elaboraciones");
       }
 
       if (resultado.remap) {
@@ -2180,8 +2539,9 @@ window.sincronizar = async function() {
       mostrarMensaje("⚠️ " + (resultado.error || "Error al sincronizar"), "warning", 4000);
     }
 
-    // Actualizar UI: recargar productos + indicadores
+    // Actualizar UI: recargar productos + recetas + indicadores
     await cargarProductos();
+    await cargarRecetas();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
 
@@ -2191,6 +2551,7 @@ window.sincronizar = async function() {
     logSyncAPK("Error general de sincronización: " + (error.message || "desconocido"), "error");
     mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
     await cargarProductos();
+    await cargarRecetas();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
   } finally {
@@ -2231,7 +2592,8 @@ function actualizarDesgloseDOM(d) {
     mermas:         "Mermas",
     entradas:       "Entradas",
     abastecimientos: "Abastecimientos",
-    gastos:         "Gastos"
+    gastos:         "Gastos",
+    elaboraciones:  "Elaboraciones"
   };
 
   var partes = [];

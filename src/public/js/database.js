@@ -15,6 +15,8 @@ const LS_KEYS = {
   abastecer: "posmovil_abastecer_pending",
   gastos: "posmovil_gastos_pending",
   config: "posmovil_config",
+  recetas: "posmovil_recetas",
+  elaboraciones: "posmovil_elaboraciones_pending",
 };
 
 function leerLocal(key, fallback) {
@@ -62,6 +64,8 @@ function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.abastecer)) guardarLocal(LS_KEYS.abastecer, []);
   if (!localStorage.getItem(LS_KEYS.gastos)) guardarLocal(LS_KEYS.gastos, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
+  if (!localStorage.getItem(LS_KEYS.recetas)) guardarLocal(LS_KEYS.recetas, []);
+  if (!localStorage.getItem(LS_KEYS.elaboraciones)) guardarLocal(LS_KEYS.elaboraciones, []);
 }
 
 function activarModoLocal(motivo) {
@@ -150,6 +154,8 @@ async function limpiarVentasAntiguas() {
       await db.execute("DELETE FROM entrada_productos_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
       // Abastecimientos
       await db.execute("DELETE FROM abastecer_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
+      // Elaboraciones
+      await db.execute("DELETE FROM elaboraciones_pending WHERE synced = 1 AND date(fecha_hora) < ?", [fechaLimiteISO]);
       // Gastos (usa 'fecha' en vez de 'fecha_hora')
       await db.execute("DELETE FROM gastos_pending WHERE synced = 1 AND date(fecha) < ?", [fechaLimiteISO]);
       
@@ -185,6 +191,13 @@ async function limpiarVentasAntiguas() {
         return extraerFechaISO(a.fecha_hora) >= fechaLimiteISO || Number(a.synced || 0) === 0;
       });
       guardarLocal(LS_KEYS.abastecer, abastecimientosFiltrados);
+      
+      // Elaboraciones
+      var elaboraciones = leerLocal(LS_KEYS.elaboraciones, []);
+      var elaboracionesFiltradas = elaboraciones.filter(function(e) {
+        return extraerFechaISO(e.fecha_hora) >= fechaLimiteISO || Number(e.synced || 0) === 0;
+      });
+      guardarLocal(LS_KEYS.elaboraciones, elaboracionesFiltradas);
       
       // Gastos (usa 'fecha' en vez de 'fecha_hora')
       var gastos = leerLocal(LS_KEYS.gastos, []);
@@ -288,6 +301,25 @@ async function initDatabase() {
     // Tabla para gastos offline
     await db.execute(
       "CREATE TABLE IF NOT EXISTS gastos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, descripcion TEXT, monto REAL, synced INTEGER DEFAULT 0)"
+    );
+
+    // Tabla de recetas (cache local)
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS recetas (nombre TEXT PRIMARY KEY, cant_lote REAL, precio_venta REAL, precio_costo REAL)"
+    );
+
+    // Migración para instalaciones existentes (agregar precio_costo si no existe)
+    try {
+      await db.execute(
+        "ALTER TABLE recetas ADD COLUMN precio_costo REAL DEFAULT 0"
+      );
+    } catch (_) {
+      // Ya existe o no requiere migración
+    }
+
+    // Tabla para elaboraciones (registro de producción local)
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS elaboraciones_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre_receta TEXT, lotes INTEGER, cantidad_producida REAL, precio_venta REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
     );
 
     console.log("✅ Base de datos SQLite inicializada");
@@ -489,6 +521,60 @@ async function syncProductosLocal(productos) {
     console.error("❌ Error guardando productos:", error);
     activarModoLocal("Error guardando productos en SQLite");
     return guardarLocal(LS_KEYS.productos, normalizados);
+  }
+}
+
+// ============================================
+// RECETAS - Sincronizar y obtener desde SQLite/localStorage
+// ============================================
+async function syncRecetasLocal(recetas) {
+  // Normalizar recetas: los encabezados del Excel pueden venir como
+  // "cantlote" o "cant_lote", "precioventa" o "precio_venta", etc.
+  var normalizadas = (recetas || []).map(function(r) {
+    return {
+      nombre: r.nombre || "",
+      cant_lote: Number(r.cant_lote ?? r.cantlote ?? 0),
+      precio_venta: Number(r.precio_venta ?? r.precioventa ?? 0),
+      precio_costo: Number(r.precio_costo ?? r.preciocosto ?? 0),
+    };
+  });
+
+  if (storageMode !== "sqlite" || !db) {
+    return guardarLocal(LS_KEYS.recetas, normalizadas);
+  }
+
+  try {
+    await db.execute("DELETE FROM recetas");
+
+    for (var i = 0; i < normalizadas.length; i++) {
+      var r = normalizadas[i];
+      await db.execute(
+        "INSERT OR REPLACE INTO recetas (nombre, cant_lote, precio_venta, precio_costo) VALUES (?, ?, ?, ?)",
+        [r.nombre, r.cant_lote, r.precio_venta, r.precio_costo]
+      );
+    }
+
+    console.log("✅ " + normalizadas.length + " recetas guardadas en SQLite");
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando recetas:", error);
+    return guardarLocal(LS_KEYS.recetas, normalizadas);
+  }
+}
+
+async function getRecetasLocal() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.recetas, []);
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT nombre, cant_lote, precio_venta, precio_costo FROM recetas ORDER BY nombre"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo recetas:", error);
+    return leerLocal(LS_KEYS.recetas, []);
   }
 }
 
@@ -1252,6 +1338,125 @@ async function marcarGastosSynced(ids) {
 }
 
 
+// ============================================
+// FUNCIONES PARA ELABORACIONES (registro de producción local)
+// ============================================
+
+// Guardar elaboración en SQLite/localStorage
+async function guardarElaboracionOffline(elaboracion) {
+  if (!elaboracion || !elaboracion.nombre_receta || !elaboracion.lotes) {
+    return false;
+  }
+
+  var fechaHora = new Date().toISOString();
+
+  if (storageMode !== "sqlite" || !db) {
+    var actuales = leerLocal(LS_KEYS.elaboraciones, []);
+    actuales.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      nombre_receta: elaboracion.nombre_receta,
+      lotes: Number(elaboracion.lotes || 0),
+      cantidad_producida: Number(elaboracion.cantidad_producida || 0),
+      precio_venta: Number(elaboracion.precio_venta || 0),
+      fecha_hora: fechaHora,
+      synced: 0,
+    });
+    return guardarLocal(LS_KEYS.elaboraciones, actuales);
+  }
+
+  try {
+    await db.execute(
+      "INSERT INTO elaboraciones_pending (nombre_receta, lotes, cantidad_producida, precio_venta, fecha_hora, synced) VALUES (?, ?, ?, ?, ?, 0)",
+      [
+        elaboracion.nombre_receta,
+        Number(elaboracion.lotes || 0),
+        Number(elaboracion.cantidad_producida || 0),
+        Number(elaboracion.precio_venta || 0),
+        fechaHora,
+      ]
+    );
+    console.log("✅ Elaboración guardada:", elaboracion.nombre_receta, "x" + elaboracion.lotes + " lote(s)");
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando elaboración:", error);
+    // Fallback a localStorage
+    var actuales2 = leerLocal(LS_KEYS.elaboraciones, []);
+    actuales2.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      nombre_receta: elaboracion.nombre_receta,
+      lotes: Number(elaboracion.lotes || 0),
+      cantidad_producida: Number(elaboracion.cantidad_producida || 0),
+      precio_venta: Number(elaboracion.precio_venta || 0),
+      fecha_hora: fechaHora,
+      synced: 0,
+    });
+    return guardarLocal(LS_KEYS.elaboraciones, actuales2);
+  }
+}
+
+// Obtener elaboraciones pendientes de sync
+async function getElaboracionesPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
+      return Number(e.synced || 0) === 0;
+    });
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT * FROM elaboraciones_pending WHERE synced = 0 ORDER BY id"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo elaboraciones pendientes:", error);
+    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
+      return Number(e.synced || 0) === 0;
+    });
+  }
+}
+
+// Contar elaboraciones pendientes
+async function contarElaboracionesPendientes() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
+      return Number(e.synced || 0) === 0;
+    }).length;
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT COUNT(*) as count FROM elaboraciones_pending WHERE synced = 0"
+    );
+    return result.values ? result.values[0].count : 0;
+  } catch (error) {
+    console.error("❌ Error contando elaboraciones pendientes:", error);
+    return 0;
+  }
+}
+
+// Marcar elaboraciones como sincronizadas
+async function marcarElaboracionesSynced(ids) {
+  if (storageMode === "sqlite" && db) {
+    for (var i = 0; i < ids.length; i++) {
+      await db.execute(
+        "UPDATE elaboraciones_pending SET synced = 1 WHERE id = ?",
+        [ids[i]]
+      );
+    }
+  } else {
+    var todos = leerLocal(LS_KEYS.elaboraciones, []);
+    var idsMap = {};
+    for (var j = 0; j < ids.length; j++) {
+      idsMap[String(ids[j])] = true;
+    }
+    for (var x = 0; x < todos.length; x++) {
+      if (idsMap[String(todos[x].id)]) {
+        todos[x].synced = 1;
+      }
+    }
+    guardarLocal(LS_KEYS.elaboraciones, todos);
+  }
+}
 
 // ============================================
 // SINCRONIZAR TODO EN UN SOLO REQUEST BATCH
@@ -1276,22 +1481,26 @@ async function sincronizarCompleto(serverUrl) {
   var pendientesVentas     = await getVentasPendientes();
   var pendientesMermas     = await getMermasPendientes();
   var pendientesGastos     = await getGastosPendientes();
+  var pendientesElaborac   = await getElaboracionesPendientes();
 
   var total = pendientesProductos.length + pendientesAbast.length +
               pendientesVentas.length + pendientesMermas.length +
-              pendientesGastos.length;
+              pendientesGastos.length + pendientesElaborac.length;
 
   if (total === 0) {
     logSyncDebugAPK("📦 [sync-completo] Nada pendiente, OK");
     return { success: true, sincronizados: {}, remap: { codigos: {}, facturas: {} } };
   }
 
+  // Si solo hay elaboraciones, podemos continuar igual (se envían al servidor)
+
   logSyncDebugAPK("📦 [sync-completo] Enviando " + total + " registros (" +
     pendientesProductos.length + " prod, " +
     pendientesAbast.length + " abast, " +
     pendientesVentas.length + " ventas, " +
     pendientesMermas.length + " mermas, " +
-    pendientesGastos.length + " gastos)");
+    pendientesGastos.length + " gastos, " +
+    pendientesElaborac.length + " elaborac)");
 
   // 2. Preparar payload (mismos formatos que antes)
   var payload = {};
@@ -1357,6 +1566,18 @@ async function sincronizarCompleto(serverUrl) {
     });
   }
 
+  if (pendientesElaborac.length) {
+    payload.elaboraciones = pendientesElaborac.map(function(e) {
+      return {
+        nombre_receta: e.nombre_receta,
+        lotes: Number(e.lotes || 0),
+        cantidad_producida: Number(e.cantidad_producida || 0),
+        precio_venta: Number(e.precio_venta || 0),
+        fecha_hora: e.fecha_hora,
+      };
+    });
+  }
+
   // 3. Enviar request
   try {
     var response = await fetch(url + "/api/sync/completo", {
@@ -1380,17 +1601,19 @@ async function sincronizarCompleto(serverUrl) {
     }
 
     // 4. Marcar TODOS los registros como sincronizados
-    var idsProductos = pendientesProductos.map(function(p) { return p.id; });
-    var idsAbast     = pendientesAbast.map(function(a) { return a.id; });
-    var idsVentas    = pendientesVentas.map(function(v) { return v.id; });
-    var idsMermas    = pendientesMermas.map(function(m) { return m.id; });
-    var idsGastos    = pendientesGastos.map(function(g) { return g.id; });
+    var idsProductos   = pendientesProductos.map(function(p) { return p.id; });
+    var idsAbast       = pendientesAbast.map(function(a) { return a.id; });
+    var idsVentas      = pendientesVentas.map(function(v) { return v.id; });
+    var idsMermas      = pendientesMermas.map(function(m) { return m.id; });
+    var idsGastos      = pendientesGastos.map(function(g) { return g.id; });
+    var idsElaborac    = pendientesElaborac.map(function(e) { return e.id; });
 
     if (idsProductos.length) await marcarEntradaProductosSynced(idsProductos);
     if (idsAbast.length)     await marcarAbastecerSynced(idsAbast);
     if (idsVentas.length)    await marcarVentasSynced(idsVentas);
     if (idsMermas.length)    await marcarMermasSynced(idsMermas);
     if (idsGastos.length)    await marcarGastosSynced(idsGastos);
+    if (idsElaborac.length)  await marcarElaboracionesSynced(idsElaborac);
 
     // 5. Guardar referencia de última factura si el servidor devolvió remap
     if (result.remap && result.remap.facturas) {
@@ -2226,6 +2449,13 @@ window.Database = {
   guardarActivacion: guardarActivacion,
   isActivated: isActivated,
   limpiarActivacion: limpiarActivacion,
+  // Funciones para recetas
+  syncRecetasLocal: syncRecetasLocal,
+  getRecetasLocal: getRecetasLocal,
+  // Funciones para elaboraciones
+  guardarElaboracionOffline: guardarElaboracionOffline,
+  getElaboracionesPendientes: getElaboracionesPendientes,
+  contarElaboracionesPendientes: contarElaboracionesPendientes,
 };
 
 console.log("📦 Database module loaded");

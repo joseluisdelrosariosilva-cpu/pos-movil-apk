@@ -24,8 +24,9 @@
                <button onclick="mostrarGasto()">💸 Gasto</button>
                <button onclick="mostrarResumen()">📊 Resumen</button>
               <button onclick="mostrarFormularioProducto()">➕ Nuevo Producto</button>
-              <button onclick="mostrarAbastecer()">📦 Abastecer</button>
-               <button onclick="mostrarHistorialVentas()">📋 Historial</button>
+               <button onclick="mostrarAbastecer()">📦 Abastecer</button>
+               <button onclick="mostrarElaborar()">🧪 Elaborar</button>
+                <button onclick="mostrarHistorialVentas()">📋 Historial</button>
               </div>
        </div>
     </header>
@@ -265,6 +266,37 @@
     <div class="modal-actions">
       <button type="button" id="btnCancelarAbastecer" class="modal-btn modal-btn-secundario">Cancelar</button>
       <button type="button" id="btnConfirmarAbastecer" class="modal-btn modal-btn-primario">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Elaborar -->
+<div id="modalElaborar" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalElaborarTitulo">
+  <div class="modal-card">
+    <h2 id="modalElaborarTitulo">🧪 Elaborar</h2>
+    
+    <div class="form-group">
+      <label for="elabRecetaSearch">Receta</label>
+      <div class="searchable-select">
+        <input type="text" id="elabRecetaSearch" placeholder="Buscar receta..." autocomplete="off">
+        <div class="searchable-dropdown hidden" id="elabRecetaDropdown"></div>
+        <input type="hidden" id="elabRecetaNombre" value="">
+      </div>
+      <div id="elabRecetaInfo" class="producto-info-selected"></div>
+    </div>
+    
+    <div class="form-group">
+      <label for="elabLotes">Cantidad de lotes a elaborar</label>
+      <input type="number" id="elabLotes" min="1" step="1" value="1" placeholder="1" required>
+    </div>
+
+    <div id="elabTotalPreview" class="elab-total-preview hidden">
+      Total a producir: <strong id="elabTotalCantidad">0</strong> unidades
+    </div>
+    
+    <div class="modal-actions">
+      <button type="button" id="btnCancelarElaborar" class="modal-btn modal-btn-secundario">Cancelar</button>
+      <button type="button" id="btnConfirmarElaborar" class="modal-btn modal-btn-primario">Elaborar</button>
     </div>
   </div>
 </div>
