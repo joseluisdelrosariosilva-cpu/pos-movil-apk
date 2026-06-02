@@ -140,3 +140,51 @@ export const getRecetas = async (req, res) => {
     });
   }
 };
+
+// ============================================
+// GET /api/ingredientes - Lista ingredientes de recetas
+// Lee columnas F:I de la hoja "Recetas" en datos.xlsx
+// ============================================
+export const getIngredientes = async (req, res) => {
+  try {
+    const { workbook } = await abrirExcel();
+
+    const hoja = obtenerHojaPorNombre(workbook, "Recetas");
+
+    const rango = hoja.usedRange();
+    if (!rango) {
+      return res
+        .status(404)
+        .json({ error: "No hay datos en la hoja de recetas" });
+    }
+
+    const datos = rango.value();
+
+    if (datos.length < 2) {
+      return res.status(404).json({ error: "No hay ingredientes cargados" });
+    }
+
+    // Mapeo fijo: columna F (índice 5) = Ingredientes, G (6) = Cantidad,
+    // H (7) = Unidad, I (8) = Receta
+    const ingredientes = datos
+      .slice(1)
+      .filter((fila) => fila[5] !== null && fila[5] !== undefined && fila[5] !== "")
+      .map((fila) => ({
+        ingrediente: fila[5] !== undefined && fila[5] !== "" ? fila[5] : null,
+        cantidad: fila[6] !== undefined && fila[6] !== "" ? fila[6] : null,
+        unidad: fila[7] !== undefined && fila[7] !== "" ? fila[7] : null,
+        receta: fila[8] !== undefined && fila[8] !== "" ? fila[8] : null,
+      }));
+
+    res.json({
+      total: ingredientes.length,
+      ingredientes: ingredientes,
+    });
+  } catch (error) {
+    console.error("❌ Error en getIngredientes:", error.message);
+    res.status(500).json({
+      error: "Error al obtener ingredientes",
+      detalle: error.message,
+    });
+  }
+};

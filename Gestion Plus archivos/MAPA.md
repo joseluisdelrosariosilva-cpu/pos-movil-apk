@@ -49,7 +49,9 @@ Gestion Plus archivos/
 │   └── modSincronizacion.bas
 │                          # [Fase4] SincronizarRecetasEnDatos: escribe recetas desde
 │                          # "Elaboración de Productos" hacia datos.xlsx hoja "Recetas"
-│                          # (Nombre, CantLote, PrecioVenta, PrecioCosto).
+│                          # (Nombre, CantLote, PrecioVenta, PrecioCosto) +
+│                          # ingredientes desde "Ingredientes" hacia F:I
+│                          # (Ingrediente, Cantidad, Unidad, Receta).
 │                          # Se ejecuta al activar servidor. PrecioCosto = Inversión/Unidad.
 ├── 08_Recetas/           # Recetas y elaboración
 │   ├── modRecetas.bas     # CRUD de recetas, búsqueda por ingrediente

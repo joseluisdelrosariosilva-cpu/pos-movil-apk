@@ -106,6 +106,11 @@ Public Sub SincronizarRecetasEnDatos()
     Dim dataArr As Variant
     Dim arrOut() As Variant
     Dim i As Long, numFilas As Long
+    Dim wsIng As Worksheet
+    Dim tblIng As ListObject
+    Dim dataArrIng As Variant
+    Dim arrOutIng() As Variant
+    Dim numFilasIng As Long
     
     Application.ScreenUpdating = False
     Application.EnableEvents = False
@@ -135,6 +140,10 @@ Public Sub SincronizarRecetasEnDatos()
         wsDestino.Range("B1").Value = "CantLote"
         wsDestino.Range("C1").Value = "PrecioVenta"
         wsDestino.Range("D1").Value = "PrecioCosto"
+        wsDestino.Range("F1").Value = "Ingredientes"
+        wsDestino.Range("G1").Value = "Cantidad"
+        wsDestino.Range("H1").Value = "Unidad"
+        wsDestino.Range("I1").Value = "Receta"
     End If
     On Error GoTo ErrHandler
     
@@ -159,6 +168,27 @@ Public Sub SincronizarRecetasEnDatos()
     paso = "Volcar datos al destino"
     wsDestino.Range("A2:D" & wsDestino.Rows.Count).ClearContents
     wsDestino.Range("A2").Resize(numFilas, 4).Value = arrOut
+    
+    paso = "Leer tabla Ingredientes_Receta"
+    Set wsIng = wbOrigen.Worksheets(HOJA_INGR_RECETA)
+    Set tblIng = wsIng.ListObjects(TBL_INGREDIENTES_RECETA)
+    
+    If Not tblIng.DataBodyRange Is Nothing Then
+        dataArrIng = tblIng.DataBodyRange.Value2
+        numFilasIng = UBound(dataArrIng, 1)
+        
+        ReDim arrOutIng(1 To numFilasIng, 1 To 4)
+        For i = 1 To numFilasIng
+            arrOutIng(i, 1) = dataArrIng(i, COL_IR_INGREDIENTE)  ' ? F
+            arrOutIng(i, 2) = dataArrIng(i, COL_IR_CANTIDAD)     ' ? G
+            arrOutIng(i, 3) = dataArrIng(i, COL_IR_UNIDAD)       ' ? H
+            arrOutIng(i, 4) = dataArrIng(i, COL_IR_RECETA)       ' ? I
+        Next i
+        
+        paso = "Volcar ingredientes al destino"
+        wsDestino.Range("F2:I" & wsDestino.Rows.Count).ClearContents
+        wsDestino.Range("F2").Resize(numFilasIng, 4).Value = arrOutIng
+    End If
     
 Finalizar:
     paso = "Guardar y cerrar"

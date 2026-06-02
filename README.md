@@ -104,7 +104,7 @@ webapp-beta/
 │   ├── server.js                 # Entry point (Express)
 │   ├── routes/
 │   │   ├── auth.routes.js        # Autenticación (sesión/token)
-│   │   ├── pos.routes.js         # Productos, Recetas
+│   │   ├── pos.routes.js         # Productos, Recetas, Ingredientes
 │   │   ├── ventas.routes.js      # Ventas
 │   │   ├── gastos.routes.js      # Gastos
 │   │   ├── abastecimientos.routes.js  # Abastecimientos
@@ -112,7 +112,7 @@ webapp-beta/
 │   │   ├── mermas.routes.js      # Mermas
 │   │   └── resumen.routes.js     # Resumen / dashboard
 │   ├── controllers/
-│   │   ├── pos.controller.js     # Lee productos y recetas desde Excel
+│   │   ├── pos.controller.js     # Lee productos, recetas e ingredientes desde Excel
 │   │   ├── ventas.controller.js  # Escribe ventas en Excel
 │   │   ├── gastos.controller.js
 │   │   ├── abastecimientos.controller.js
@@ -135,7 +135,8 @@ webapp-beta/
 │   │       └── database.js       # Manejo de datos (SQLite local + localStorage)
 │   │                            # Tablas: productos, ventas_pending, mermas_pending,
 │   │                            # entrada_productos_pending, abastecer_pending,
-│   │                            # gastos_pending, elaboraciones_pending, config, recetas
+│   │                            # gastos_pending, elaboraciones_pending, config,
+│   │                            # recetas, ingredientes
 │   └── views/
 │       └── ocupado.html          # Página "POS Ocupado"
 ├── android/                      # Proyecto Android nativo (Capacitor)
@@ -163,7 +164,8 @@ webapp-beta/
 | `GET /api/estado-publico` | GET | No | Indica si hay sesión activa (público) |
 | `POST /api/cerrar-sesion` | POST | Sí | Cierra la sesión activa |
 | `GET /api/productos` | GET | Flexible* | Lista productos desde Excel |
-| `GET /api/recetas` | GET | Flexible* | Lista recetas desde Excel (Nombre, CantLote, PrecioVenta) |
+| `GET /api/recetas` | GET | Flexible* | Lista recetas desde Excel (Nombre, CantLote, PrecioVenta, PrecioCosto) |
+| `GET /api/ingredientes` | GET | Flexible* | Lista ingredientes de recetas desde Excel (Ingrediente, Cantidad, Unidad, Receta) |
 | `POST /api/ventas` | POST | Sí | Registra una venta en Excel |
 | `POST /api/gastos` | POST | Sí | Registra gastos desde APK |
 | `POST /api/abastecimientos` | POST | Sí | Sincroniza abastecimientos desde APK |
@@ -173,7 +175,7 @@ webapp-beta/
 
 Todas las peticiones autenticadas envían el token en el header `x-session-token`.
 
-> **Nota:** Las rutas marcadas como *Flexible* (`/productos`, `/recetas`, `/ventas`, `/resumen`, `/sync/completo`) permiten acceso sin token de sesión para compatibilidad con la APK sin sesión previa.
+> **Nota:** Las rutas marcadas como *Flexible* (`/productos`, `/recetas`, `/ingredientes`, `/ventas`, `/resumen`, `/sync/completo`) permiten acceso sin token de sesión para compatibilidad con la APK sin sesión previa.
 
 ---
 
@@ -212,6 +214,10 @@ Todas las peticiones autenticadas envían el token en el header `x-session-token
 | B | `cant_lote` | Cantidad producida por lote |
 | C | `precio_venta` | Precio de venta por unidad |
 | D | `precio_costo` | Costo por unidad (Inversión/Unidad) |
+| F | `ingrediente` | Ingrediente de la receta (1 fila por ingrediente) |
+| G | `cantidad` | Cantidad del ingrediente |
+| H | `unidad` | Unidad de medida del ingrediente |
+| I | `receta` | Nombre de la receta a la que pertenece |
 
 ### Hoja "Elaboracion"
 
@@ -225,6 +231,7 @@ Todas las peticiones autenticadas envían el token en el header `x-session-token
 > Esta hoja se escribe desde VBA (`SincronizarRecetasEnDatos`) al activar el servidor,
 > y se sincroniza a la app al presionar "🔄 Sincronizar" desde el menú.
 > `PrecioCosto` mapea a la columna `Inversión/Unidad` (`COL_REC_INV_UNIDAD`) de la tabla Recetas en "Elaboración de Productos".
+> Los ingredientes (columnas F:I) se leen de la tabla `TBL_INGREDIENTES_RECETA` en la hoja "Ingredientes" del libro Gestion Plus.
 
 ### Hoja "Pendientes"
 

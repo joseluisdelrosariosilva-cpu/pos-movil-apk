@@ -13,6 +13,7 @@
 // ============================================
 
 import { conExcelLock, abrirExcel, guardarExcel, obtenerHojaPorNombre, actualizarStock, escribirLineaVenta } from "../utils/excelHelper.js";
+import { fechaLocalISO } from "../utils/date.util.js";
 
 // ============================================
 // Helpers internos
@@ -105,6 +106,20 @@ const sumarStockProducto = (hojaProductos, codigo, cantidad) => {
   throw new Error(`sumarStockProducto: no se encontró código "${codigo}" en hoja Productos`);
 };
 
+/**
+ * Extrae la fecha en formato DD/MM/YYYY desde un string datetime local ISO
+ * Ejemplo: "2026-05-31T23:00:00.000" → "31/05/2026"
+ * Fallback a la fecha actual si no puede procesar
+ */
+const formatearFechaDesdeISO = (fechaHora) => {
+  if (!fechaHora) return new Date().toLocaleDateString("es-ES");
+  const parteFecha = fechaHora.split("T")[0]; // "2026-05-31"
+  if (!parteFecha) return new Date().toLocaleDateString("es-ES");
+  const partes = parteFecha.split("-");
+  if (partes.length !== 3) return new Date().toLocaleDateString("es-ES");
+  return `${partes[2]}/${partes[1]}/${partes[0]}`; // "31/05/2026"
+};
+
 // ============================================
 // SYNC COMPLETO
 // ============================================
@@ -165,7 +180,6 @@ export const sincronizarCompleto = async (req, res) => {
         const hojaEntrada = workbook.sheet("Entrada");
         if (!hojaEntrada) throw new Error('No se encontró hoja "Entrada"');
 
-        const fechaActual = new Date().toLocaleDateString("es-ES");
         const { codigos, maxSufijo } = escanearProductosExistentes(hojaProductos);
         let proxSufijo = maxSufijo + 1;
 
@@ -194,11 +208,11 @@ export const sincronizarCompleto = async (req, res) => {
           hojaProductos.cell(`C${filaP}`).value(Number(prod.cantidad) || 0);
           hojaProductos.cell(`D${filaP}`).value(Number(prod.precio_venta) || 0);
 
-          // Escribir en Entrada
+          // Escribir en Entrada (con la fecha real de creación del producto)
           const filaE = primeraFilaVacia(hojaEntrada, "A");
           hojaEntrada.cell(`A${filaE}`).value(codFinal);
           hojaEntrada.cell(`B${filaE}`).value(prod.nombre);
-          hojaEntrada.cell(`C${filaE}`).value(fechaActual);
+          hojaEntrada.cell(`C${filaE}`).value(formatearFechaDesdeISO(prod.fecha_hora));
           hojaEntrada.cell(`D${filaE}`).value(Number(prod.cantidad) || 0);
           hojaEntrada.cell(`E${filaE}`).value(Number(prod.precio_venta) || 0);
           hojaEntrada.cell(`F${filaE}`).value(Number(prod.precio_costo) || 0);
@@ -232,7 +246,7 @@ export const sincronizarCompleto = async (req, res) => {
           const filaA = primeraFilaVacia(hojaAbastecimiento, "A");
           hojaAbastecimiento.cell(`A${filaA}`).value(codFinal);
           hojaAbastecimiento.cell(`B${filaA}`).value(cantidad);
-          hojaAbastecimiento.cell(`C${filaA}`).value(abast.fechaHora || new Date().toISOString());
+          hojaAbastecimiento.cell(`C${filaA}`).value(abast.fechaHora || fechaLocalISO());
 
           // Sumar al stock
           sumarStockProducto(hojaProductos, codFinal, cantidad);

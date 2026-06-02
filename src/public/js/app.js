@@ -14,7 +14,24 @@ const DECIMALES = 3;
 const FACTOR_DECIMALES = 10 ** DECIMALES;
 const PASO_CANTIDAD = 1;
 const KEY_ULTIMA_SYNC = "posmovil_ultima_sync";
-let ultimaSyncISO = localStorage.getItem(KEY_ULTIMA_SYNC) || null;
+// Cargar timestamp con migración desde formato ISO string (versiones anteriores)
+let ultimaSyncTS = null;
+try {
+  var rawSync = localStorage.getItem(KEY_ULTIMA_SYNC);
+  if (rawSync) {
+    var num = Number(rawSync);
+    if (!Number.isNaN(num) && num > 0) {
+      ultimaSyncTS = num;
+    } else {
+      // Migración: el valor era un ISO string (new Date().toISOString())
+      var fecha = new Date(rawSync);
+      if (!Number.isNaN(fecha.getTime())) {
+        ultimaSyncTS = fecha.getTime();
+        localStorage.setItem(KEY_ULTIMA_SYNC, String(ultimaSyncTS));
+      }
+    }
+  }
+} catch (_) {}
 
 function redondear3(valor) {
   return Math.round((Number(valor) || 0) * FACTOR_DECIMALES) / FACTOR_DECIMALES;
@@ -37,9 +54,19 @@ function formatearMoneda(valor) {
   return "$" + formatearNumero(valor);
 }
 
-function guardarUltimaSync(fecha = new Date()) {
-  ultimaSyncISO = fecha.toISOString();
-  localStorage.setItem(KEY_ULTIMA_SYNC, ultimaSyncISO);
+function escaparHTML(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function guardarUltimaSync() {
+  ultimaSyncTS = Date.now();
+  localStorage.setItem(KEY_ULTIMA_SYNC, String(ultimaSyncTS));
 }
 
 // ============================================
@@ -158,17 +185,24 @@ async function actualizarPanelEstado() {
   }
 
   if (estadoUltimaSyncEl) {
-    if (!ultimaSyncISO) {
+    if (!ultimaSyncTS) {
       estadoUltimaSyncEl.textContent = "Nunca";
     } else {
-      var fecha = new Date(ultimaSyncISO);
+      var fecha = new Date(ultimaSyncTS);
       if (Number.isNaN(fecha.getTime())) {
         estadoUltimaSyncEl.textContent = "Nunca";
       } else {
-        estadoUltimaSyncEl.textContent = fecha.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        var ahora = new Date();
+        var diffDias = Math.floor((Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()) -
+                                   Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate())) /
+                                  (1000 * 60 * 60 * 24));
+        if (diffDias === 0) {
+          estadoUltimaSyncEl.textContent = fecha.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        } else if (diffDias === 1) {
+          estadoUltimaSyncEl.textContent = "Ayer";
+        } else {
+          estadoUltimaSyncEl.textContent = "Hace " + diffDias + " días";
+        }
       }
     }
   }
@@ -293,6 +327,52 @@ try {
     mostrarMensaje("Sin conexion", "warning");
     productosContainer.innerHTML = '<p class="info">Sin conexion.<br>Activa el servidor.</p>';
     await actualizarPanelEstado();
+  }
+}
+
+// ============================================
+// CARGAR INGREDIENTES DESDE EL SERVIDOR
+// ============================================
+async function cargarIngredientes() {
+  console.log("📡 Cargando ingredientes...");
+
+  var serverUrl = obtenerUrlServidor();
+  var fetchUrl = serverUrl + "/api/ingredientes";
+
+  try {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+
+    var response = await fetch(fetchUrl, {
+      method: "GET",
+      headers: { "x-session-token": window.SESSION_TOKEN || "" },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      var data = await response.json();
+      var ingredientes = Array.isArray(data) ? data : (data.ingredientes || []);
+
+      if (ingredientes.length > 0 && dbInicializado && DB.syncIngredientesLocal) {
+        await DB.syncIngredientesLocal(ingredientes);
+        console.log("✅ " + ingredientes.length + " ingredientes sincronizados");
+      } else {
+        console.log("📡 Sin ingredientes para sincronizar");
+      }
+    } else {
+      throw new Error("HTTP " + response.status);
+    }
+  } catch (e) {
+    var errorMsg = e.name === "AbortError" ? "Timeout" : e.message;
+    console.log("⚠️ Error cargando ingredientes:", errorMsg);
+
+    // Fallback: cargar desde SQLite
+    if (dbInicializado && DB.getIngredientesLocal) {
+      var locales = await DB.getIngredientesLocal();
+      console.log("📦 Ingredientes offline: " + (locales.length || 0));
+    }
   }
 }
 
@@ -1235,6 +1315,13 @@ window.mostrarElaborar = async function() {
   if (infoDiv) infoDiv.innerHTML = "";
   if (totalPreview) totalPreview.classList.add("hidden");
 
+  // Limpiar ingredientes
+  var ingredientesDiv = document.getElementById("elabRecetaIngredientes");
+  if (ingredientesDiv) {
+    ingredientesDiv.innerHTML = "";
+    ingredientesDiv.classList.add("hidden");
+  }
+
   // Resetear cantidad de lotes
   var lotesInput = document.getElementById("elabLotes");
   if (lotesInput) lotesInput.value = "1";
@@ -1248,6 +1335,11 @@ function cerrarModalElaborar() {
   if (modal) modal.classList.add("hidden");
   var dropdown = document.getElementById("elabRecetaDropdown");
   if (dropdown) dropdown.classList.add("hidden");
+  var ingredientesDiv = document.getElementById("elabRecetaIngredientes");
+  if (ingredientesDiv) {
+    ingredientesDiv.innerHTML = "";
+    ingredientesDiv.classList.add("hidden");
+  }
 }
 
 // Filtrar recetas y mostrar dropdown
@@ -1287,7 +1379,7 @@ function filtrarRecetasElaborar(termino) {
         const r = resultados[j];
         const item = document.createElement("div");
         item.className = "dropdown-item";
-        item.innerHTML = r.nombre + ' <span style="color: var(--text-secondary); font-size: 12px;">(x lote: ' + formatearNumero(r.cant_lote) + 'u - $' + formatearNumero(r.precio_venta) + ')</span>';
+        item.innerHTML = escaparHTML(r.nombre) + ' <span style="color: var(--text-secondary); font-size: 12px;">(x lote: ' + formatearNumero(r.cant_lote) + 'u - $' + formatearNumero(r.precio_venta) + ')</span>';
         item.dataset.nombre = r.nombre;
         item.dataset.cantLote = r.cant_lote;
         item.dataset.precioVenta = r.precio_venta;
@@ -1318,6 +1410,7 @@ function seleccionarRecetaElaborar(nombre, cantLote, precioVenta, precioCosto) {
   var searchInput = document.getElementById("elabRecetaSearch");
   var infoDiv = document.getElementById("elabRecetaInfo");
   var dropdown = document.getElementById("elabRecetaDropdown");
+  var ingredientesDiv = document.getElementById("elabRecetaIngredientes");
 
   recetaSeleccionada = {
     nombre: nombre,
@@ -1329,11 +1422,32 @@ function seleccionarRecetaElaborar(nombre, cantLote, precioVenta, precioCosto) {
   if (nombreInput) nombreInput.value = nombre;
   if (searchInput) searchInput.value = nombre;
   if (infoDiv) {
-    infoDiv.innerHTML = '<strong>' + nombre + '</strong>' +
+    infoDiv.innerHTML = '<strong>' + escaparHTML(nombre) + '</strong>' +
       '<div class="stock-info">💰 Precio venta: $' + formatearNumero(precioVenta) +
       ' | 📦 Por lote: ' + formatearNumero(cantLote) + ' unidades</div>';
   }
   if (dropdown) dropdown.classList.add("hidden");
+
+  // Cargar ingredientes de la receta desde la DB local
+  if (ingredientesDiv) {
+    ingredientesDiv.innerHTML = '<div class="ing-loading">Cargando ingredientes...</div>';
+    ingredientesDiv.classList.remove("hidden");
+  }
+  DB.getIngredientesLocal().then(function(todos) {
+    if (!ingredientesDiv) return;
+    var filtrados = (todos || []).filter(function(ing) {
+      return (ing.receta || "").toLowerCase() === nombre.toLowerCase();
+    });
+    // Guardar ingredientes base (por lote) en recetaSeleccionada
+    recetaSeleccionada.ingredientes = filtrados;
+    // Renderizar con la cantidad de lotes actual
+    actualizarIngredientesPreview();
+  }).catch(function(err) {
+    console.error("❌ Error cargando ingredientes:", err);
+    if (ingredientesDiv) {
+      ingredientesDiv.innerHTML = '<div class="ing-empty" style="color: var(--error);">Error al cargar ingredientes</div>';
+    }
+  });
 
   // Actualizar preview de total
   actualizarTotalPreview();
@@ -1354,6 +1468,42 @@ function actualizarTotalPreview() {
   } else {
     totalPreview.classList.add("hidden");
   }
+}
+
+function actualizarIngredientesPreview() {
+  var ingredientesDiv = document.getElementById("elabRecetaIngredientes");
+  if (!ingredientesDiv) return;
+
+  var ingredientes = recetaSeleccionada && recetaSeleccionada.ingredientes;
+  if (!ingredientes) {
+    // Si no hay ingredientes aún, puede que estén cargando
+    if (recetaSeleccionada && recetaSeleccionada.nombre) {
+      ingredientesDiv.innerHTML = '<div class="ing-loading">Cargando ingredientes...</div>';
+    } else {
+      ingredientesDiv.innerHTML = '<div class="ing-empty">Seleccioná una receta</div>';
+    }
+    return;
+  }
+  if (ingredientes.length === 0) {
+    ingredientesDiv.innerHTML = '<div class="ing-empty">Esta receta no tiene ingredientes registrados</div>';
+    return;
+  }
+
+  var lotesInput = document.getElementById("elabLotes");
+  var lotes = parseInt(lotesInput ? lotesInput.value : 1) || 1;
+
+  var html = '<div class="ing-header">🧪 Ingredientes' + (lotes > 1 ? ' para ' + lotes + ' lotes' : ' por lote') + ':</div>';
+  html += '<ul class="ing-list">';
+  for (var i = 0; i < ingredientes.length; i++) {
+    var ing = ingredientes[i];
+    var cantidadTotal = redondear3((ing.cantidad || 0) * lotes);
+    html += '<li class="ing-item">' +
+      '<span class="ing-nombre">' + escaparHTML(ing.ingrediente) + '</span>' +
+      '<span class="ing-cantidad">' + formatearNumero(cantidadTotal) + ' ' + escaparHTML(ing.unidad) + '</span>' +
+      '</li>';
+  }
+  html += '</ul>';
+  ingredientesDiv.innerHTML = html;
 }
 
 window.confirmarElaborar = async function() {
@@ -1516,7 +1666,10 @@ document.addEventListener("DOMContentLoaded", function() {
   // Event listener para actualizar preview al cambiar lotes
   var lotesInput = document.getElementById("elabLotes");
   if (lotesInput) {
-    lotesInput.addEventListener("input", actualizarTotalPreview);
+    lotesInput.addEventListener("input", function() {
+      actualizarTotalPreview();
+      actualizarIngredientesPreview();
+    });
   }
 });
 
@@ -2539,9 +2692,10 @@ window.sincronizar = async function() {
       mostrarMensaje("⚠️ " + (resultado.error || "Error al sincronizar"), "warning", 4000);
     }
 
-    // Actualizar UI: recargar productos + recetas + indicadores
+    // Actualizar UI: recargar productos + recetas + ingredientes + indicadores
     await cargarProductos();
     await cargarRecetas();
+    await cargarIngredientes();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
 
@@ -2552,6 +2706,7 @@ window.sincronizar = async function() {
     mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
     await cargarProductos();
     await cargarRecetas();
+    await cargarIngredientes();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
   } finally {

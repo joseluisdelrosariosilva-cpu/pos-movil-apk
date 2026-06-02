@@ -1550,6 +1550,67 @@ body {
 }
 
 /* =============================================
+   INGREDIENTES DE RECETA (Modal Elaborar)
+   ============================================= */
+
+.ing-container {
+  margin-top: 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background-color: #3c3c3c;
+  border-radius: 8px;
+}
+
+.ing-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9aa0a6;
+  margin-bottom: 8px;
+}
+
+.ing-loading {
+  font-size: 13px;
+  color: #9aa0a6;
+  font-style: italic;
+}
+
+.ing-empty {
+  font-size: 13px;
+  color: #9aa0a6;
+}
+
+.ing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ing-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #4a4a4a;
+  font-size: 14px;
+}
+
+.ing-item:last-child {
+  border-bottom: none;
+}
+
+.ing-nombre {
+  color: #e8eaed;
+  font-weight: 500;
+}
+
+.ing-cantidad {
+  color: #ff6300;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* =============================================
    PROTECCIÓN DE DISPOSITIVO
    ============================================= */
 

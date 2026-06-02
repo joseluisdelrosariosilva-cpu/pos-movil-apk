@@ -36,12 +36,16 @@ Public Sub ImportarVentas()
     
     ' 1. Importar datos complementarios primero
     Call ImportarEntradas
-    Call ActualizarInventarioDesdeAbastecimiento
-    Call ProcesarMermas
-    Call ProcesarElaboraciones
-    Call ImportarGastos
-    
     Application.ScreenUpdating = False
+    Call ActualizarInventarioDesdeAbastecimiento
+    Application.ScreenUpdating = False
+    Call ProcesarMermas
+    Application.ScreenUpdating = False
+    Call ProcesarElaboraciones
+    Application.ScreenUpdating = False
+    Call ImportarGastos
+    Application.ScreenUpdating = False
+    
     ' 2. Leer ventas pendientes
     resultado = ObtenerVentasPendientes()
     
@@ -138,6 +142,7 @@ ErrorHandler:
     On Error Resume Next
     If Not wb Is Nothing Then wb.Close False
     On Error GoTo 0
+    Application.ScreenUpdating = True
     MsgBox "Error al importar ventas: " & Err.Description, vbCritical
 End Sub
 
@@ -217,8 +222,6 @@ Private Sub ImportarEntradas()
     Dim cantActual As Double, fondo As Double
     Dim ingresoEsperado As Double, gananciaEsperada As Double
     
-    Application.ScreenUpdating = False
-    
     ruta = ThisWorkbook.Path & "\" & CARPETA_WEBAPP & ARCHIVO_DATOS
     If Dir(ruta) = "" Then Exit Sub
     
@@ -290,8 +293,6 @@ Private Sub ImportarEntradas()
     wb.Save
     wb.Close False
     
-    Application.ScreenUpdating = True
-    
     Exit Sub
     
 ErrorHandler:
@@ -312,7 +313,6 @@ Private Sub ActualizarInventarioDesdeAbastecimiento()
     Dim datosPath As String
     
     Set wbGestion = ThisWorkbook
-    Application.ScreenUpdating = False
     
     datosPath = wbGestion.Path & "\" & CARPETA_WEBAPP & ARCHIVO_DATOS
     If Dir(datosPath) = "" Then Exit Sub
@@ -483,7 +483,7 @@ Private Sub ProcesarElaboraciones()
     Dim ultimaFila As Long
     Dim i As Long
     Dim nombreReceta As String
-    Dim lotes As Double
+    Dim Lotes As Double
     Dim faltantes As String
     Dim procesadas As Long
     Dim pendientes As Long
@@ -509,8 +509,6 @@ Private Sub ProcesarElaboraciones()
         Exit Sub
     End If
     
-    Application.ScreenUpdating = False
-    
     ultimaFila = wsElaboracion.Cells(wsElaboracion.Rows.Count, 1).End(xlUp).Row
     procesadas = 0
     pendientes = 0
@@ -519,9 +517,9 @@ Private Sub ProcesarElaboraciones()
     ' Iterar de abajo hacia arriba para borrar filas sin problemas
     For i = ultimaFila To 2 Step -1
         nombreReceta = CStr(wsElaboracion.Cells(i, 1).Value)
-        lotes = Val(wsElaboracion.Cells(i, 2).Value)
+        Lotes = Val(wsElaboracion.Cells(i, 2).Value)
         
-        If nombreReceta = "" Or lotes <= 0 Then
+        If nombreReceta = "" Or Lotes <= 0 Then
             ' Fila inválida, borrarla igual
             wsElaboracion.Rows(i).Delete
             GoTo Siguiente
@@ -530,11 +528,11 @@ Private Sub ProcesarElaboraciones()
         ' 1. VALIDAR si hay stock suficiente de ingredientes
         faltantes = ""
         On Error Resume Next
-        If modElaboracion.ValidarStockElaboracion(nombreReceta, lotes, faltantes) Then
+        If modElaboracion.ValidarStockElaboracion(nombreReceta, Lotes, faltantes) Then
             On Error GoTo ErrorHandler
             
             ' 2. Stock suficiente ? descontar y borrar la fila
-            Call modElaboracion.DescontarStockIngredientes(nombreReceta, lotes)
+            Call modElaboracion.DescontarStockIngredientes(nombreReceta, Lotes)
             wsElaboracion.Rows(i).Delete
             procesadas = procesadas + 1
         Else
@@ -543,7 +541,7 @@ Private Sub ProcesarElaboraciones()
             ' 3. Stock insuficiente ? dejar la fila para después
             pendientes = pendientes + 1
             mensajePendientes = mensajePendientes & _
-                "- " & nombreReceta & " x" & lotes & " lote(s)" & vbCrLf & _
+                "- " & nombreReceta & " x" & Lotes & " lote(s)" & vbCrLf & _
                 "  " & Replace(faltantes, vbCrLf, vbCrLf & "  ") & vbCrLf
         End If
         
@@ -552,8 +550,6 @@ Siguiente:
     
     wb.Save
     wb.Close False
-    
-    Application.ScreenUpdating = True
     
     ' Mostrar resumen al usuario
     If procesadas > 0 And pendientes = 0 Then

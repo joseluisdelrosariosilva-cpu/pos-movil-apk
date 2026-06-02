@@ -16,6 +16,7 @@ const LS_KEYS = {
   gastos: "posmovil_gastos_pending",
   config: "posmovil_config",
   recetas: "posmovil_recetas",
+  ingredientes: "posmovil_ingredientes",
   elaboraciones: "posmovil_elaboraciones_pending",
 };
 
@@ -65,6 +66,7 @@ function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.gastos)) guardarLocal(LS_KEYS.gastos, []);
   if (!localStorage.getItem(LS_KEYS.config)) guardarLocal(LS_KEYS.config, {});
   if (!localStorage.getItem(LS_KEYS.recetas)) guardarLocal(LS_KEYS.recetas, []);
+  if (!localStorage.getItem(LS_KEYS.ingredientes)) guardarLocal(LS_KEYS.ingredientes, []);
   if (!localStorage.getItem(LS_KEYS.elaboraciones)) guardarLocal(LS_KEYS.elaboraciones, []);
 }
 
@@ -230,6 +232,23 @@ function extraerFechaISO(valor) {
   return y + "-" + m + "-" + d;
 }
 
+/**
+ * Genera timestamp en formato ISO con HORA LOCAL (sin UTC)
+ * Ejemplo: "2026-05-31T23:00:00.000" (sin Z ni offset)
+ * POLÍTICA: siempre usar hora local del dispositivo en toda la app
+ */
+function fechaLocalISO() {
+  var f = new Date();
+  var y = f.getFullYear();
+  var m = String(f.getMonth() + 1).padStart(2, "0");
+  var d = String(f.getDate()).padStart(2, "0");
+  var hh = String(f.getHours()).padStart(2, "0");
+  var mm = String(f.getMinutes()).padStart(2, "0");
+  var ss = String(f.getSeconds()).padStart(2, "0");
+  var ms = String(f.getMilliseconds()).padStart(3, "0");
+  return y + "-" + m + "-" + d + "T" + hh + ":" + mm + ":" + ss + "." + ms;
+}
+
 // ============================================
 // INICIALIZAR BASE DE DATOS
 // ============================================
@@ -316,6 +335,11 @@ async function initDatabase() {
     } catch (_) {
       // Ya existe o no requiere migración
     }
+
+    // Tabla de ingredientes de recetas (cache local)
+    await db.execute(
+      "CREATE TABLE IF NOT EXISTS ingredientes (ingrediente TEXT, cantidad REAL, unidad TEXT, receta TEXT)"
+    );
 
     // Tabla para elaboraciones (registro de producción local)
     await db.execute(
@@ -423,7 +447,7 @@ async function guardarEntradaProductoCompleto(producto) {
   }
 
   // 2. Guardar en tabla entrada_productos_pending (para sync al servidor)
-  var fechaHora = new Date().toISOString();
+  var fechaHora = fechaLocalISO();
   console.log("🔍 [DEBUG] guardarEntradaProductoCompleto - Datos:", JSON.stringify({
     codigo: producto.codigo,
     nombre: producto.nombre,
@@ -575,6 +599,58 @@ async function getRecetasLocal() {
   } catch (error) {
     console.error("❌ Error obteniendo recetas:", error);
     return leerLocal(LS_KEYS.recetas, []);
+  }
+}
+
+// ============================================
+// INGREDIENTES - Sincronizar y obtener desde SQLite/localStorage
+// ============================================
+async function syncIngredientesLocal(ingredientes) {
+  var normalizadas = (ingredientes || []).map(function(i) {
+    return {
+      ingrediente: i.ingrediente || "",
+      cantidad: Number(i.cantidad ?? 0),
+      unidad: i.unidad || "",
+      receta: i.receta || "",
+    };
+  });
+
+  if (storageMode !== "sqlite" || !db) {
+    return guardarLocal(LS_KEYS.ingredientes, normalizadas);
+  }
+
+  try {
+    await db.execute("DELETE FROM ingredientes");
+
+    for (var i = 0; i < normalizadas.length; i++) {
+      var ing = normalizadas[i];
+      await db.execute(
+        "INSERT INTO ingredientes (ingrediente, cantidad, unidad, receta) VALUES (?, ?, ?, ?)",
+        [ing.ingrediente, ing.cantidad, ing.unidad, ing.receta]
+      );
+    }
+
+    console.log("✅ " + normalizadas.length + " ingredientes guardados en SQLite");
+    return true;
+  } catch (error) {
+    console.error("❌ Error guardando ingredientes:", error);
+    return guardarLocal(LS_KEYS.ingredientes, normalizadas);
+  }
+}
+
+async function getIngredientesLocal() {
+  if (storageMode !== "sqlite" || !db) {
+    return leerLocal(LS_KEYS.ingredientes, []);
+  }
+
+  try {
+    var result = await db.execute(
+      "SELECT ingrediente, cantidad, unidad, receta FROM ingredientes ORDER BY receta, ingrediente"
+    );
+    return result.values || [];
+  } catch (error) {
+    console.error("❌ Error obteniendo ingredientes:", error);
+    return leerLocal(LS_KEYS.ingredientes, []);
   }
 }
 
@@ -1196,7 +1272,7 @@ async function guardarAbastecerOffline(abastecer) {
   }
 
   // 2. Guardar registro en abastecer_pending
-  var fechaHora = new Date().toISOString();
+  var fechaHora = fechaLocalISO();
 
   if (storageMode !== "sqlite" || !db) {
     // Modo localStorage
@@ -1236,7 +1312,7 @@ async function guardarGastoOffline(gasto) {
     return false;
   }
 
-  var fecha = gasto.fecha || new Date().toISOString().split("T")[0];
+  var fecha = gasto.fecha || fechaLocalISO().split("T")[0];
   var monto = Number(gasto.monto) || 0;
 
   if (storageMode !== "sqlite" || !db) {
@@ -1348,7 +1424,7 @@ async function guardarElaboracionOffline(elaboracion) {
     return false;
   }
 
-  var fechaHora = new Date().toISOString();
+  var fechaHora = fechaLocalISO();
 
   if (storageMode !== "sqlite" || !db) {
     var actuales = leerLocal(LS_KEYS.elaboraciones, []);
@@ -1639,9 +1715,7 @@ async function sincronizarCompleto(serverUrl) {
     }
 
     // 6. Guardar también la referencia de sincronización
-    try {
-      localStorage.setItem('posmovil_ultima_sync', new Date().toISOString());
-    } catch (e) {}
+    guardarUltimaSync();
 
     logSyncDebugAPK(
       "✅ [sync-completo] Batch completado: " +
@@ -2452,6 +2526,9 @@ window.Database = {
   // Funciones para recetas
   syncRecetasLocal: syncRecetasLocal,
   getRecetasLocal: getRecetasLocal,
+  // Funciones para ingredientes
+  syncIngredientesLocal: syncIngredientesLocal,
+  getIngredientesLocal: getIngredientesLocal,
   // Funciones para elaboraciones
   guardarElaboracionOffline: guardarElaboracionOffline,
   getElaboracionesPendientes: getElaboracionesPendientes,
