@@ -2086,7 +2086,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     dbInicializado = await DB.initDatabase();
     console.log("📦 SQLite inicializado:", dbInicializado);
     if (DB.getStorageMode) {
-      console.log("📦 Modo de almacenamiento:", DB.getStorageMode());
+      var mode = DB.getStorageMode();
+      console.log("📦 Modo de almacenamiento:", mode);
     }
     
     // Cargar servidor cacheado de sesiones anteriores

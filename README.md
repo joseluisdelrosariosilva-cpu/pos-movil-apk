@@ -9,7 +9,8 @@ Sistema de Punto de Venta (POS) diseñado para usarse desde un dispositivo móvi
 ## Características
 
 - 📱 **Frontend mobile-first** con tema oscuro, búsqueda en tiempo real y carrito flotante
-- 📱 **APK Android nativa** con Capacitor (SQLite local offline)
+- 📱 **APK Android nativa** con Capacitor 8 y SQLite local offline
+- 📡 **Sincronización batch** — un solo request sincroniza productos, abastecimientos, ventas, mermas, gastos y elaboraciones con remapeo automático de códigos
 - 🧪 **Elaboración por lotes** — producir stock desde recetas con registro local y sincronización
 - 🔒 **Sesión única** vinculada a IP con token y expiración renovable (30 min)
 - 📊 **Persistencia en Excel** — sin base de datos tradicional
@@ -106,23 +107,17 @@ webapp-beta/
 │   │   ├── auth.routes.js        # Autenticación (sesión/token)
 │   │   ├── pos.routes.js         # Productos, Recetas, Ingredientes
 │   │   ├── ventas.routes.js      # Ventas
-│   │   ├── gastos.routes.js      # Gastos
-│   │   ├── abastecimientos.routes.js  # Abastecimientos
-│   │   ├── entrada-productos.routes.js # Entrada de productos
-│   │   ├── mermas.routes.js      # Mermas
-│   │   └── resumen.routes.js     # Resumen / dashboard
+│   │   ├── resumen.routes.js     # Resumen / dashboard
+│   │   └── sync-completo.routes.js  # Sincronización batch (APK → Excel)
 │   ├── controllers/
 │   │   ├── pos.controller.js     # Lee productos, recetas e ingredientes desde Excel
 │   │   ├── ventas.controller.js  # Escribe ventas en Excel
-│   │   ├── gastos.controller.js
-│   │   ├── abastecimientos.controller.js
-│   │   ├── entrada-productos.controller.js
-│   │   ├── mermas.controller.js
-│   │   └── resumen.controller.js
+│   │   ├── resumen.controller.js
+│   │   └── sync-completo.controller.js  # Procesa todo en un solo request batch
 │   ├── middlewares/
 │   │   └── auth.middleware.js    # Validación de token de sesión
 │   ├── utils/
-│   │   ├── excelHelper.js        # CRUD con Excel (xlsx-populate)
+│   │   ├── excelHelper.js        # CRUD con Excel (xlsx-populate + mutex)
 │   │   ├── server-control.js     # Gestión de flags (activo/detener)
 │   │   ├── session.util.js       # Sesión en memoria (IP + token + expiración)
 │   │   ├── token.util.js         # Generación y validación de tokens
@@ -163,19 +158,18 @@ webapp-beta/
 | `GET /api/estado-sesion` | GET | Sí | Detalle de sesión activa |
 | `GET /api/estado-publico` | GET | No | Indica si hay sesión activa (público) |
 | `POST /api/cerrar-sesion` | POST | Sí | Cierra la sesión activa |
+| `GET /api/mutex` | GET | Sí | Diagnóstico del mutex de Excel |
+| `POST /api/mutex/reiniciar` | POST | Sí | Reinicia la cola del mutex si está trabado |
 | `GET /api/productos` | GET | Flexible* | Lista productos desde Excel |
 | `GET /api/recetas` | GET | Flexible* | Lista recetas desde Excel (Nombre, CantLote, PrecioVenta, PrecioCosto) |
 | `GET /api/ingredientes` | GET | Flexible* | Lista ingredientes de recetas desde Excel (Ingrediente, Cantidad, Unidad, Receta) |
 | `POST /api/ventas` | POST | Sí | Registra una venta en Excel |
-| `POST /api/gastos` | POST | Sí | Registra gastos desde APK |
-| `POST /api/abastecimientos` | POST | Sí | Sincroniza abastecimientos desde APK |
-| `POST /api/entrada-productos` | POST | Sí | Sincroniza productos nuevos desde APK |
-| `POST /api/mermas` | POST | Sí | Registra mermas desde APK |
+| `POST /api/sync/completo` | POST | Sí | Sincronización batch: productos, abastecimientos, ventas, mermas, gastos y elaboraciones en un solo request con remapeo automático de códigos |
 | `GET /api/resumen` | GET | Sí | Resumen de ventas del día |
 
 Todas las peticiones autenticadas envían el token en el header `x-session-token`.
 
-> **Nota:** Las rutas marcadas como *Flexible* (`/productos`, `/recetas`, `/ingredientes`, `/ventas`, `/resumen`, `/sync/completo`) permiten acceso sin token de sesión para compatibilidad con la APK sin sesión previa.
+> **Nota:** Las rutas marcadas como *Flexible* (`/productos`, `/recetas`, `/ingredientes`, `/sync/completo`) permiten acceso sin token de sesión para compatibilidad con la APK sin sesión previa.
 
 ---
 
@@ -193,6 +187,83 @@ Todas las peticiones autenticadas envían el token en el header `x-session-token
 9. Frontend limpia carrito y recarga productos
 10. Macros de Excel leen "Pendientes", procesan ventas, marcan Procesado=true
 ```
+
+---
+
+## Sincronización Batch (APK → Excel)
+
+La APK Android acumula datos offline y los sincroniza con el servidor en un solo request batch vía `POST /api/sync/completo`. El orden de procesamiento es determinista y atómico:
+
+```
+1. Productos nuevos → hoja "Productos" + "Entrada"
+   ↪ Si hay conflicto de código, se remapea automáticamente (Pr_00001, Pr_00002...)
+2. Abastecimientos → hoja "Abastecimiento"
+   ↪ Usa el mapa de remapeo de códigos del paso 1
+   ↪ Suma al stock en hoja "Productos"
+3. Ventas → hoja "Pendientes"
+   ↪ Usa el mapa de remapeo de códigos
+   ↪ Si hay conflicto de FacturaID, se remapea automáticamente
+   ↪ Descuenta del stock
+4. Mermas → hoja "Merma"
+   ↪ Usa el mapa de remapeo de códigos
+   ↪ Descuenta del stock
+5. Gastos → hoja "Gastos" (se crea si no existe)
+6. Elaboraciones → hoja "Elaboracion" (se crea si no existe)
+```
+
+Todo dentro de un mutex (`conExcelLock`): si **algo** falla, **nada** se guarda. El servidor devuelve los mapas de remapeo para que la APK actualice sus registros locales.
+
+---
+
+## Arquitectura Offline (APK Android)
+
+La APK usa una **arquitectura de doble persistencia**: los datos se guardan en SQLite local y simultáneamente en `localStorage` como fallback.
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Frontend (APK)                  │
+│                                                  │
+│   ┌──────────┐      ┌────────────────────────┐   │
+│   │ IndexedDB │◄────►│      database.js       │   │
+│   │ (sql.js)  │      │ ┌──────────────────┐  │   │
+│   └──────────┘      │ │   crearWrapper    │  │   │
+│                      │ │   SQLite (Cap 8) │  │   │
+│   ┌──────────┐      │ ├──────────────────┤  │   │
+│   │localStor.│◄────►│ │activarModoLocal()│  │   │
+│   └──────────┘      │ └──────────────────┘  │   │
+│                      └────────────────────────┘   │
+└─────────────────────────────────────────────────┘
+```
+
+### Inicialización
+
+1. **Capacitor 8** via `@capacitor-community/sqlite` → SQLite nativo
+   - `createConnection()` → `open()` → `crearTablasSQLite()`
+   - Fallo → `activarModoLocal()` (vuelca todo a localStorage)
+2. **Capacitor <8 / Cordova** via `window.SQLite.createDatabase()`
+   - Fallo → `activarModoLocal()`
+3. **Sin Capacitor** (navegador web) → localStorage directo
+
+### Esquema SQLite
+
+```sql
+-- Productos, ventas, gastos, etc. se persisten como JSON en cada tabla
+CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT, timestamp INTEGER);
+CREATE TABLE IF NOT EXISTS productos (data TEXT);
+CREATE TABLE IF NOT EXISTS ventas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+CREATE TABLE IF NOT EXISTS entrada_productos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+CREATE TABLE IF NOT EXISTS abastecer_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+CREATE TABLE IF NOT EXISTS gastos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+CREATE TABLE IF NOT EXISTS elaboraciones_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, synced INTEGER DEFAULT 0, data TEXT);
+```
+
+### Persistencia robusta
+
+- Cada operación escribe en **SQLite + localStorage** simultáneamente
+- Si SQLite falla, `localStorage` sigue funcionando como respaldo
+- Al leer, prioriza SQLite; si falla, cae a localStorage
+- El batch de sincronización se construye desde SQLite (o localStorage si SQLite no está disponible)
 
 ---
 
@@ -247,6 +318,41 @@ Todas las peticiones autenticadas envían el token en el header `x-session-token
 | H | `Efectivo` | Monto pagado en efectivo |
 | I | `Transferencia` | Monto pagado por transferencia |
 | J | `Procesado` | `false` por defecto (macros lo ponen en `true`) |
+
+### Hoja "Entrada"
+
+| Columna | Campo | Descripción |
+|---------|-------|-------------|
+| A | `codigo` | Código del producto (puede ser remapeado si hay conflicto) |
+| B | `producto` | Nombre del producto |
+| C | `fecha` | Fecha de creación en formato DD/MM/YYYY |
+| D | `stock_inicial` | Stock inicial |
+| E | `precio_venta` | Precio de venta |
+| F | `precio_costo` | Precio de costo |
+
+### Hoja "Abastecimiento"
+
+| Columna | Campo | Descripción |
+|---------|-------|-------------|
+| A | `codigo` | Código del producto a reabastecer |
+| B | `cantidad` | Cantidad agregada al stock |
+| C | `fecha_hora` | Fecha y hora del abastecimiento |
+
+### Hoja "Merma"
+
+| Columna | Campo | Descripción |
+|---------|-------|-------------|
+| A | `codigo` | Código del producto |
+| B | `nombre` | Nombre del producto |
+| C | `cantidad` | Cantidad de merma |
+
+### Hoja "Gastos"
+
+| Columna | Campo | Descripción |
+|---------|-------|-------------|
+| A | `Fecha` | Fecha del gasto |
+| B | `Descripcion` | Concepto del gasto |
+| C | `Monto` | Monto del gasto |
 
 ---
 

@@ -77,6 +77,84 @@ function activarModoLocal(motivo) {
   console.warn("📦 [DB] Modo localStorage activo:", motivo);
 }
 
+/**
+ * Crea un wrapper que adapta la API de @capacitor-community/sqlite v8
+ * (Capacitor.Plugins.CapacitorSQLite) a la interfaz que espera el resto del código:
+ *   db.execute(sql, params?)  → rutea a run() / query() / execute() según el caso
+ *   db.query(sql, params?)    → rutea a query()
+ */
+function crearWrapperSQLite(plugin, dbName) {
+  return {
+    execute: async function (sql, params) {
+      var trimmed = sql.trim().toUpperCase();
+
+      // 1) SELECT / WITH → query() (el Android plugin exige values[])
+      if (trimmed.startsWith("SELECT") || trimmed.startsWith("WITH")) {
+        var res = await plugin.query({
+          database: dbName,
+          statement: sql,
+          values: Array.isArray(params) ? params : [],
+        });
+        return { values: res.values || [] };
+      }
+
+      // 2) Con parámetros → run()
+      if (params !== undefined && params !== null) {
+        var res = await plugin.run({
+          database: dbName,
+          statement: sql,
+          values: Array.isArray(params) ? params : [params],
+        });
+        return { changes: res.changes || { changes: 0 } };
+      }
+
+      // 3) DDL / batch → execute()
+      var res = await plugin.execute({ database: dbName, statements: sql });
+      return { changes: res.changes || { changes: 0 } };
+    },
+
+    query: async function (sql, params) {
+      var res = await plugin.query({
+        database: dbName,
+        statement: sql,
+        values: params || [],
+      });
+      return { values: res.values || [] };
+    },
+  };
+}
+
+/**
+ * Crea TODAS las tablas del esquema SQLite.
+ * Extraída para no duplicar entre el path de Capacitor 8 y el legacy.
+ */
+async function crearTablasSQLite() {
+  await db.execute(
+    "CREATE TABLE IF NOT EXISTS productos (codigo TEXT PRIMARY KEY, nombre TEXT, precio REAL, disponibilidad INTEGER)"
+  );
+  await db.execute(
+    "CREATE TABLE IF NOT EXISTS ventas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id TEXT, fecha_hora TEXT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, precio REAL, subtotal REAL, efectivo REAL, transferencia REAL, synced INTEGER DEFAULT 0)"
+  );
+  // Migración para instalaciones viejas (columna mal escrita: efectividad)
+  try {
+    await db.execute("ALTER TABLE ventas_pending ADD COLUMN efectivo REAL DEFAULT 0");
+  } catch (_) {}
+  try {
+    await db.execute("UPDATE ventas_pending SET efectivo = COALESCE(efectivo, efectividad, 0)");
+  } catch (_) {}
+  await db.execute("CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT, timestamp INTEGER)");
+  await db.execute("CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)");
+  await db.execute("CREATE TABLE IF NOT EXISTS entrada_productos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, nombre TEXT, cantidad INTEGER, precio_venta REAL, precio_costo REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)");
+  await db.execute("CREATE TABLE IF NOT EXISTS abastecer_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)");
+  await db.execute("CREATE TABLE IF NOT EXISTS gastos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, descripcion TEXT, monto REAL, synced INTEGER DEFAULT 0)");
+  await db.execute("CREATE TABLE IF NOT EXISTS recetas (nombre TEXT PRIMARY KEY, cant_lote REAL, precio_venta REAL, precio_costo REAL)");
+  try {
+    await db.execute("ALTER TABLE recetas ADD COLUMN precio_costo REAL DEFAULT 0");
+  } catch (_) {}
+  await db.execute("CREATE TABLE IF NOT EXISTS ingredientes (ingrediente TEXT, cantidad REAL, unidad TEXT, receta TEXT)");
+  await db.execute("CREATE TABLE IF NOT EXISTS elaboraciones_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre_receta TEXT, lotes INTEGER, cantidad_producida REAL, precio_venta REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)");
+}
+
 function normalizarProducto(p) {
   return {
     codigo: p.codigo,
@@ -259,101 +337,59 @@ async function initDatabase() {
     return true;
   }
 
+  // ============================================
+  // 1) Capacitor 8: Capacitor.Plugins.CapacitorSQLite
+  // ============================================
+  var plugin = null;
+  if (window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite) {
+    plugin = window.Capacitor.Plugins.CapacitorSQLite;
+  }
+
+  if (plugin) {
+    try {
+      await plugin.createConnection({
+        database: "posmovil",
+        version: 1,
+        encrypted: false,
+        mode: "no-encryption",
+      });
+      await plugin.open({ database: "posmovil" });
+      db = crearWrapperSQLite(plugin, "posmovil");
+      await crearTablasSQLite();
+      console.log("✅ Base de datos SQLite inicializada (Capacitor 8)");
+      storageMode = "sqlite";
+      return true;
+    } catch (error) {
+      console.error("❌ Error inicializando SQLite (Capacitor 8):", error);
+      try { await plugin.closeConnection({ database: "posmovil" }); } catch (_) {}
+      activarModoLocal("Falló init SQLite Capacitor 8: " + (error.message || error));
+      return true;
+    }
+  }
+
+  // ============================================
+  // 2) Fallback: window.SQLite (legacy Capacitor <8 / Cordova)
+  // ============================================
   var sqliteGlobal = window.SQLite;
-  if (!sqliteGlobal || typeof sqliteGlobal.createDatabase !== "function") {
-    activarModoLocal("Plugin SQLite no expuesto como window.SQLite.createDatabase");
-    return true;
+  if (sqliteGlobal && typeof sqliteGlobal.createDatabase === "function") {
+    try {
+      db = await sqliteGlobal.createDatabase({ database: "posmovil.db" });
+      await crearTablasSQLite();
+      console.log("✅ Base de datos SQLite inicializada (legacy)");
+      storageMode = "sqlite";
+      return true;
+    } catch (error) {
+      console.error("❌ Error inicializando SQLite (legacy):", error);
+      activarModoLocal("Falló init SQLite legacy");
+      return true;
+    }
   }
 
-  try {
-    // Abrir o crear base de datos
-    db = await sqliteGlobal.createDatabase({
-      database: "posmovil.db",
-    });
-
-    // Crear tablas si no existen
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS productos (codigo TEXT PRIMARY KEY, nombre TEXT, precio REAL, disponibilidad INTEGER)"
-    );
-
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS ventas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id TEXT, fecha_hora TEXT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, precio REAL, subtotal REAL, efectivo REAL, transferencia REAL, synced INTEGER DEFAULT 0)"
-    );
-
-    // Migración para instalaciones viejas (columna mal escrita: efectividad)
-    try {
-      await db.execute(
-        "ALTER TABLE ventas_pending ADD COLUMN efectivo REAL DEFAULT 0"
-      );
-    } catch (_) {
-      // Ya existe o la tabla no requiere migración
-    }
-
-    try {
-      await db.execute(
-        "UPDATE ventas_pending SET efectivo = COALESCE(efectivo, efectividad, 0)"
-      );
-    } catch (_) {
-      // Si no existe 'efectividad' en esta instalación, ignorar
-    }
-
-    // Tabla de configuración (cache del servidor, etc.)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT, timestamp INTEGER)"
-    );
-
-    // Tabla para mermas offline
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS mermas_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
-    );
-
-    // Tabla para entrada de nuevos productos (pendiente de sync al servidor)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS entrada_productos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, nombre TEXT, cantidad INTEGER, precio_venta REAL, precio_costo REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
-    );
-
-    // Tabla para abastecer (reabastecer productos existentes - offline)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS abastecer_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo_producto TEXT, nombre TEXT, cantidad INTEGER, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
-    );
-
-    // Tabla para gastos offline
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS gastos_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, descripcion TEXT, monto REAL, synced INTEGER DEFAULT 0)"
-    );
-
-    // Tabla de recetas (cache local)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS recetas (nombre TEXT PRIMARY KEY, cant_lote REAL, precio_venta REAL, precio_costo REAL)"
-    );
-
-    // Migración para instalaciones existentes (agregar precio_costo si no existe)
-    try {
-      await db.execute(
-        "ALTER TABLE recetas ADD COLUMN precio_costo REAL DEFAULT 0"
-      );
-    } catch (_) {
-      // Ya existe o no requiere migración
-    }
-
-    // Tabla de ingredientes de recetas (cache local)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS ingredientes (ingrediente TEXT, cantidad REAL, unidad TEXT, receta TEXT)"
-    );
-
-    // Tabla para elaboraciones (registro de producción local)
-    await db.execute(
-      "CREATE TABLE IF NOT EXISTS elaboraciones_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre_receta TEXT, lotes INTEGER, cantidad_producida REAL, precio_venta REAL, fecha_hora TEXT, synced INTEGER DEFAULT 0)"
-    );
-
-    console.log("✅ Base de datos SQLite inicializada");
-    storageMode = "sqlite";
-    return true;
-  } catch (error) {
-    console.error("❌ Error inicializando SQLite:", error);
-    activarModoLocal("Falló init SQLite");
-    return true;
-  }
+  // ============================================
+  // 3) No hay plugin SQLite → localStorage
+  // ============================================
+  activarModoLocal("Plugin SQLite no expuesto");
+  return true;
 }
 
 // ============================================
@@ -511,7 +547,8 @@ async function getProductosLocal() {
     return result.values || [];
   } catch (error) {
     console.error("❌ Error obteniendo productos:", error);
-    activarModoLocal("Error consultando productos SQLite");
+    console.error("Error consultando productos SQLite:", error);
+    // No matar modo SQLite, solo fallback temporal
     return leerLocal(LS_KEYS.productos, []);
   }
 }
@@ -543,7 +580,7 @@ async function syncProductosLocal(productos) {
     return true;
   } catch (error) {
     console.error("❌ Error guardando productos:", error);
-    activarModoLocal("Error guardando productos en SQLite");
+    console.error("Error guardando productos SQLite:", error);
     return guardarLocal(LS_KEYS.productos, normalizados);
   }
 }
@@ -718,7 +755,7 @@ async function guardarVentaOffline(venta) {
     return true;
   } catch (error) {
     console.error("❌ Error guardando venta offline:", error);
-    activarModoLocal("Error guardando ventas en SQLite");
+    console.error("Error guardando venta SQLite:", error);
     var actuales2 = leerLocal(LS_KEYS.ventas, []);
     var lineas2 = construirLineasVenta(venta, 0);
     return guardarLocal(LS_KEYS.ventas, actuales2.concat(lineas2));
@@ -788,7 +825,7 @@ async function guardarVentaOnlineLocal(venta, facturaIdServidor) {
     return true;
   } catch (error) {
     console.error("❌ Error guardando venta online local:", error);
-    activarModoLocal("Error guardando histórico online en SQLite");
+    console.error("Error guardando online local SQLite:", error);
     var actuales2 = leerLocal(LS_KEYS.ventas, []);
     return guardarLocal(LS_KEYS.ventas, actuales2.concat(lineasVenta));
   }
@@ -811,7 +848,7 @@ async function getVentasPendientes() {
     return result.values || [];
   } catch (error) {
     console.error("❌ Error obteniendo ventas pendientes:", error);
-    activarModoLocal("Error leyendo pendientes SQLite");
+    console.error("Error leyendo pendientes SQLite:", error);
     return leerLocal(LS_KEYS.ventas, []).filter(function(v) {
       return Number(v.synced || 0) === 0;
     });
@@ -936,8 +973,10 @@ async function contarVentasPendientes() {
     );
     return result.values ? result.values[0].count : 0;
   } catch (error) {
+    var errMsg = error.message || String(error);
     console.error("❌ Error contando pendientes:", error);
-    activarModoLocal("Error contando pendientes SQLite");
+    console.error("Error contando pendientes SQLite:", error);
+    // No matar el modo SQLite por un error de consulta
     return contarFacturasPendientesLocal(leerLocal(LS_KEYS.ventas, []));
   }
 }
