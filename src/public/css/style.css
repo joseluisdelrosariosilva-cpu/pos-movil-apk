@@ -66,6 +66,7 @@ body {
   font-weight: 500;
   letter-spacing: -0.5px;
   color: var(--accent);
+  margin-bottom: 8px;
   text-shadow: 0 2px 8px rgba(255, 99, 0, 0.3);
 }
 
@@ -464,20 +465,6 @@ body {
     align-items: stretch;
     gap: 8px;
   }
-}
-
-.header h1 {
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: -0.5px;
-  color: var(--accent);
-  margin-bottom: 8px;
-  text-shadow: 0 2px 8px rgba(255, 99, 0, 0.3);
-}
-
-.header .subtitle {
-  color: var(--text-secondary);
-  font-size: 14px;
 }
 
 .search-box {
@@ -1298,6 +1285,27 @@ body {
 
 .sync-ip-error.hidden {
   display: none;
+}
+
+/* ===== ERROR INLINE EN MODAL DE SYNC ===== */
+.sync-error-container {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(242, 139, 130, 0.12);
+  border: 1px solid rgba(242, 139, 130, 0.3);
+  animation: fadeInView 0.25s ease-out;
+}
+
+.sync-error-container.hidden {
+  display: none;
+}
+
+.sync-error-container p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--error);
 }
 
 /* Input en estado error */

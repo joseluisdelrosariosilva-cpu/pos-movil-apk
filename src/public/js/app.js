@@ -248,86 +248,96 @@ function cerrarModalVuelto(confirmado) {
 // ============================================
 // CARGAR PRODUCTOS
 // ============================================
-async function cargarProductos() {
+async function cargarProductos(desdeLocal) {
   console.log("📡 Cargando productos...");
-  mostrarMensaje("Cargando...", "info");
-  
-  var serverUrl = obtenerUrlServidor();
-  var fetchUrl = serverUrl + "/api/productos";
-  
-  console.log("📡 URL:", fetchUrl);
 
-  var timeoutId = setTimeout(function() { 
-    console.log("⏱️ Timeout");
-  }, 8000);
-
-try {
-    console.log("📡 Usando fetch nativo...");
-    var controller = new AbortController();
-    timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+  if (!desdeLocal) {
+    // Solo intentar servidor si NO es carga inicial offline
+    var serverUrl = obtenerUrlServidor();
+    var fetchUrl = serverUrl + "/api/productos";
     
-    var response = await fetch(fetchUrl, {
-      method: "GET",
-      headers: { "x-session-token": window.SESSION_TOKEN || "" },
-      signal: controller.signal,
-    });
+    console.log("📡 URL:", fetchUrl);
+    mostrarMensaje("Cargando...", "info");
+  
+    var timeoutId = setTimeout(function() { 
+      console.log("⏱️ Timeout");
+    }, 8000);
+  
+    try {
+      console.log("📡 Usando fetch nativo...");
+      var controller = new AbortController();
+      timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+      
+      var response = await fetch(fetchUrl, {
+        method: "GET",
+        headers: { "x-session-token": window.SESSION_TOKEN || "" },
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeoutId);
-    console.log("📡 Status:", response.status);
-    
-    if (response.ok) {
-      modoOffline = false;
-      var data = await response.json();
-      productos = Array.isArray(data) ? data : (data.productos || []);
+      clearTimeout(timeoutId);
+      console.log("📡 Status:", response.status);
+      
+      if (response.ok) {
+        modoOffline = false;
+        var data = await response.json();
+        productos = Array.isArray(data) ? data : (data.productos || []);
 
-      if (productos.length > 0) {
-        // Guardar en SQLite para uso offline
-        if (dbInicializado && DB.syncProductosLocal) {
-          await DB.syncProductosLocal(productos);
+        if (productos.length > 0) {
+          if (dbInicializado && DB.syncProductosLocal) {
+            await DB.syncProductosLocal(productos);
+          }
+          
+          renderizarProductos(productos);
+          mostrarMensaje(productos.length + " productos", "exito", 2000);
+          console.log("✅ " + productos.length + " productos");
+        } else {
+          productosContainer.innerHTML = '<p class="info">Sin productos</p>';
+          mostrarMensaje("Sin productos", "warning");
         }
-        
-        renderizarProductos(productos);
-        mostrarMensaje(productos.length + " productos", "exito", 2000);
-        console.log("✅ " + productos.length + " productos");
-      } else {
-        productosContainer.innerHTML = '<p class="info">Sin productos</p>';
-        mostrarMensaje("Sin productos", "warning");
-      }
 
-      await actualizarPanelEstado();
-    } else {
-      throw new Error("HTTP " + response.status);
-    }
-} catch(e) {
-    clearTimeout(timeoutId);
-    var errorMsg = "Error: " + e.message;
-    
-    if (e.name === "AbortError") {
-      errorMsg = "⚠️ Timeout (8s) - no responde";
-    } else if (e.message && e.message.includes("Failed to fetch")) {
-      errorMsg = "⚠️ Failed to fetch - Android bloquea HTTP?";
-    }
-    
-    console.log("❌ " + errorMsg);
-    
-    // Intentar cargar desde SQLite si falla el servidor
-    if (dbInicializado && DB.getProductosLocal) {
-      var productosLocales = await DB.getProductosLocal();
-      if (productosLocales.length > 0) {
-        modoOffline = true;
-        productos = productosLocales;
-        renderizarProductos(productos);
-        mostrarMensaje("📦 Modo offline: " + productosLocales.length + " productos", "info", 3000);
-        console.log("📦 Cargados " + productosLocales.length + " productos desde SQLite");
         await actualizarPanelEstado();
         return;
+      } else {
+        throw new Error("HTTP " + response.status);
       }
+    } catch(e) {
+      clearTimeout(timeoutId);
+      var errorMsg = "Error: " + e.message;
+      
+      if (e.name === "AbortError") {
+        errorMsg = "⚠️ Timeout (8s) - no responde";
+      } else if (e.message && e.message.includes("Failed to fetch")) {
+        errorMsg = "⚠️ Failed to fetch - Android bloquea HTTP?";
+      }
+      
+      console.log("❌ " + errorMsg);
     }
-    
+  }
+
+  // Carga desde SQLite (desdeLocal=true O fetch falló)
+  if (dbInicializado && DB.getProductosLocal) {
+    var productosLocales = await DB.getProductosLocal();
+    if (productosLocales.length > 0) {
+      modoOffline = true;
+      productos = productosLocales;
+      renderizarProductos(productos);
+      console.log("📦 Cargados " + productosLocales.length + " productos desde SQLite");
+      if (!desdeLocal) {
+        mostrarMensaje("📦 Modo offline: " + productosLocales.length + " productos", "info", 3000);
+      }
+      await actualizarPanelEstado();
+      return;
+    }
+  }
+
+  // No hay datos en ningún lado
+  if (!desdeLocal) {
     mostrarMensaje("Sin conexion", "warning");
     productosContainer.innerHTML = '<p class="info">Sin conexion.<br>Activa el servidor.</p>';
-    await actualizarPanelEstado();
+  } else {
+    productosContainer.innerHTML = '<p class="info">Sin productos. Sincronizá para descargar.</p>';
   }
+  await actualizarPanelEstado();
 }
 
 // ============================================
@@ -1787,88 +1797,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 });
 
-// ============================================
-// GENERAR FACTURA ID PARA MODO OFFLINE
-// Formato: [5 dígitos fecha serial Excel] + [5 dígitos consecutivo]
-// USA LA REFERENCIA DE DATOS.XLSX - no calcula el prefijo
-// Si la referencia es 46141, y pasaron 0 días → 46141, si pasó 1 día → 46142
-// ============================================
-function generarFacturaId() {
-  const now = new Date();
-  const hoyISO = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-  
-  // Leer referencia guardada del servidor Y su fecha
-  let ultimaReferencia = null;
-  let fechaReferencia = null;
-  try {
-    ultimaReferencia = localStorage.getItem('posmovil_ultima_factura_referencia');
-    fechaReferencia = localStorage.getItem('posmovil_fecha_referencia');
-  } catch(e) {}
-  
-  // Si tenemos referencia Y fecha, usarlas
-  if (ultimaReferencia && ultimaReferencia.length >= 10 && fechaReferencia) {
-    const prefijoRef = ultimaReferencia.substring(0, 5);
-    const sufijoRef = parseInt(ultimaReferencia.substring(5, 10)) || 0;
-    
-    // Calcular cuántos días pasaron desde la referencia
-    const refDate = new Date(fechaReferencia);
-    const todayDate = new Date(hoyISO);
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const diasDiff = Math.floor((todayDate - refDate) / msPerDay);
-    
-    const prefijoHoy = String(Number(prefijoRef) + diasDiff).padStart(5, '0');
-    
-    if (diasDiff === 0) {
-      // Mismo día que la referencia, incrementar sufijo
-      const nuevoSufijo = sufijoRef + 1;
-      const sufijo = nuevoSufijo.toString().padStart(5, '0');
-      const nuevoId = prefijoHoy + sufijo;
-      
-      try {
-        localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
-        localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
-        localStorage.setItem('posmovil_ultimo_sufijo', nuevoSufijo.toString());
-      } catch(e) {}
-      
-      console.log('📋 FacturaID generado: ' + nuevoId + ' (mismo día que referencia)');
-      return nuevoId;
-    } else {
-      // Nuevo día (o días), empezar sufijo en 1
-      const sufijo = "00001";
-      const nuevoId = prefijoHoy + sufijo;
-      
-      try {
-        localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
-        localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
-        localStorage.setItem('posmovil_ultimo_sufijo', '1');
-        localStorage.setItem('posmovil_fecha_referencia', hoyISO);
-      } catch(e) {}
-      
-      console.log('📋 FacturaID generado: ' + nuevoId + ' (nuevo día, díasDiff=' + diasDiff + ')');
-      return nuevoId;
-    }
-  }
-  
-  // Fallback: sin referencia, usar la fecha actual (primera vez)
-  // Aquí SÍ calculamos el prefijo porque no tenemos referencia
-  const fechaBase = new Date(1900, 0, 1);
-  const diffMs = now - fechaBase;
-  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const fechaSerial = diffDias + 2;
-  const prefijoHoy = Math.floor(fechaSerial).toString().padStart(5, '0');
-  const sufijo = "00001";
-  const nuevoId = prefijoHoy + sufijo;
-  
-  try {
-    localStorage.setItem('posmovil_ultima_factura_referencia', nuevoId);
-    localStorage.setItem('posmovil_ultimo_prefijo', prefijoHoy);
-    localStorage.setItem('posmovil_ultimo_sufijo', '1');
-    localStorage.setItem('posmovil_fecha_referencia', hoyISO);
-  } catch(e) {}
-  
-  console.log('📋 FacturaID generado (sin referencia): ' + nuevoId);
-  return nuevoId;
-}
+// (generarFacturaId movida a database.js para usar guardarLocal con detección de errores)
 // ============================================
 // 9. UTILIDADES
 // ============================================
@@ -1929,7 +1858,8 @@ if (modalVuelto) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (!modalVuelto || modalVuelto.classList.contains("hidden")) return;
+  // Solo responde si hay una promesa de modal activa
+  if (resolverModal === null) return;
   if (e.key === "Escape") cerrarModalVuelto(false);
   if (e.key === "Enter") cerrarModalVuelto(true);
 });
@@ -2090,14 +2020,13 @@ document.addEventListener("DOMContentLoaded", async function() {
       console.log("📦 Modo de almacenamiento:", mode);
     }
     
-    // Cargar servidor cacheado de sesiones anteriores
-    if (dbInicializado && DB.obtenerServidorCacheado) {
-      var urlCacheada = await DB.obtenerServidorCacheado();
-      if (urlCacheada) {
-        window.SERVER_URL = urlCacheada;
-        serverUrlCacheado = urlCacheada;
-        console.log("📦 Servidor cacheado cargado:", urlCacheada);
-        mostrarMensaje("✅ Servidor: " + urlCacheada, "exito", 2000);
+    // Cargar servidores conocidos de sesiones anteriores
+    if (dbInicializado && DB.obtenerListaServidores) {
+      var listaServidores = await DB.obtenerListaServidores();
+      if (listaServidores && listaServidores.length > 0) {
+        window.SERVER_URL = listaServidores[0];
+        console.log("📦 Servidores conocidos cargados:", listaServidores.join(", "));
+        console.log("📦 Usando:", window.SERVER_URL);
       }
     }
     
@@ -2115,7 +2044,8 @@ document.addEventListener("DOMContentLoaded", async function() {
   }
   
   await actualizarPanelEstado();
-  await cargarProductos();
+  // Cargar productos desde SQLite (offline) — sin intentar conectar al servidor
+  await cargarProductos(true);
   actualizarVistaCarrito();
 });
 
@@ -2468,6 +2398,203 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 // ============================================
+// GESTIÓN DE CONEXIÓN AL SERVIDOR (modal + escaneo + IP manual)
+// ============================================
+
+var _handlersConexionOK = false;
+
+function _configurarHandlersConexion() {
+  if (_handlersConexionOK) return;
+  _handlersConexionOK = true;
+
+  var modalSync = document.getElementById("modalSyncProgress");
+  var syncScanView = document.getElementById("syncScanView");
+  var syncManualIPView = document.getElementById("syncManualIPView");
+  var inputManualIP = document.getElementById("inputManualIP");
+  var syncIPError = document.getElementById("syncIPError");
+  var syncURLPreview = document.getElementById("syncURLPreview");
+  var syncURLText = document.getElementById("syncURLText");
+
+  function esIPValida(ip) {
+    if (!ip || ip.length < 7) return false;
+    var partes = ip.trim().split(".");
+    if (partes.length !== 4) return false;
+    return partes.every(function(octeto) {
+      var num = Number(octeto);
+      return !isNaN(num) && octeto.length > 0 && num >= 0 && num <= 255
+        && octeto === String(num);
+    });
+  }
+
+  function actualizarPreviewIP() {
+    var ip = inputManualIP.value.trim();
+    if (ip.length > 0) {
+      syncURLText.textContent = "http://" + ip + ":3000";
+      syncURLPreview.classList.remove("hidden");
+    } else {
+      syncURLPreview.classList.add("hidden");
+    }
+  }
+
+  function limpiarErrorIP() {
+    syncIPError.classList.add("hidden");
+    inputManualIP.classList.remove("input-error");
+  }
+
+  // Cancelar escaneo
+  document.getElementById("btnCancelSync").onclick = function() {
+    _estadoConexion.cancelada = true;
+    cancelarEscaneo = true;
+    if (modalSync) modalSync.classList.add("hidden");
+    logSyncAPK("Sincronización cancelada por usuario", "warning");
+    mostrarMensaje("Sincronización cancelada", "info", 2000);
+  };
+
+  // Volver a syncScanView desde IP manual
+  document.getElementById("btnCancelManualIP").onclick = function() {
+    limpiarErrorIP();
+    if (syncManualIPView) syncManualIPView.classList.add("hidden");
+    if (syncScanView) syncScanView.classList.remove("hidden");
+  };
+
+  // Mostrar vista de IP manual
+  document.getElementById("btnManualIP").onclick = function() {
+    limpiarErrorIP();
+    inputManualIP.value = "";
+    syncURLPreview.classList.add("hidden");
+    if (syncScanView) syncScanView.classList.add("hidden");
+    if (syncManualIPView) syncManualIPView.classList.remove("hidden");
+    inputManualIP.focus();
+  };
+
+  // Preview en vivo
+  inputManualIP.addEventListener("input", function() {
+    limpiarErrorIP();
+    actualizarPreviewIP();
+  });
+
+  // Enter = confirmar
+  inputManualIP.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("btnConfirmManualIP").click();
+    }
+  });
+
+  // Confirmar IP manual
+  document.getElementById("btnConfirmManualIP").onclick = function() {
+    var ipIngresada = inputManualIP.value.trim();
+    if (!esIPValida(ipIngresada)) {
+      syncIPError.classList.remove("hidden");
+      inputManualIP.classList.add("input-error");
+      inputManualIP.focus();
+      return;
+    }
+
+    _estadoConexion.ipManualSet = true;
+    _estadoConexion.url = "http://" + ipIngresada + ":3000";
+    _estadoConexion.cancelada = true;
+    cancelarEscaneo = true;
+    if (modalSync) modalSync.classList.add("hidden");
+    logSyncAPK("Servidor configurado manualmente: " + _estadoConexion.url);
+    mostrarMensaje("✅ IP manual: " + _estadoConexion.url, "exito", 2000);
+  };
+}
+
+/**
+ * Asegura que haya un SERVER_URL configurado.
+ * Muestra modal de escaneo/IP manual si es necesario.
+ * Returns: true si hay conexión, false si se canceló o no se encontró.
+ */
+var _estadoConexion = {};
+
+async function _asegurarConexionServidor() {
+  // Resetear estado de escaneo global para evitar estados colgados de reintentos
+  cancelarEscaneo = false;
+
+  // Si ya hay una URL conocida, probarla rápido en background
+  if (window.SERVER_URL) {
+    try {
+      var res = await fetch(window.SERVER_URL + "/api/estado-publico", {
+        method: "GET",
+        signal: AbortSignal.timeout(2000)
+      });
+      if (res.ok) return true;
+    } catch (e) {}
+    // No respondió — limpiar URL stale para no perder tiempo en próximos reintentos
+    console.log("🔍 Servidor conocido no responde, limpiando URL stale...");
+    window.SERVER_URL = null;
+    serverUrlCacheado = null;
+  }
+
+  console.log("🔍 Buscando servidor...");
+  logSyncAPK("No hay servidor disponible, iniciando descubrimiento");
+
+  var modalSync = document.getElementById("modalSyncProgress");
+  var syncStatusText = document.getElementById("syncStatusText");
+  var syncErrorContainer = document.getElementById("syncErrorContainer");
+  var syncErrorText = document.getElementById("syncErrorText");
+
+  // Ocultar error de intentos anteriores
+  if (syncErrorContainer) syncErrorContainer.classList.add("hidden");
+
+  if (modalSync) {
+    modalSync.classList.remove("hidden");
+    syncStatusText.textContent = "Buscando servidor...";
+  }
+
+  _configurarHandlersConexion();
+  _estadoConexion = { cancelada: false, ipManualSet: false, url: null };
+
+  if (DB.descubrirServidor) {
+    var servidorEncontrado = await DB.descubrirServidor(function(msg) {
+      if (syncStatusText) syncStatusText.textContent = msg;
+    });
+
+    if (_estadoConexion.cancelada && !_estadoConexion.ipManualSet) {
+      logSyncAPK("Descubrimiento cancelado sin IP manual", "warning");
+      return false;
+    }
+
+    if (_estadoConexion.ipManualSet) {
+      window.SERVER_URL = _estadoConexion.url;
+      serverUrlCacheado = _estadoConexion.url;
+      if (DB.agregarServidorConocido) {
+        DB.agregarServidorConocido(_estadoConexion.url, "manual");
+      }
+      return true;
+    }
+
+    if (servidorEncontrado) {
+      window.SERVER_URL = servidorEncontrado;
+      serverUrlCacheado = servidorEncontrado;
+      console.log("✅ Servidor encontrado:", servidorEncontrado);
+      logSyncAPK("Servidor encontrado: " + servidorEncontrado);
+      mostrarMensaje("✅ Servidor: " + servidorEncontrado, "exito", 3000);
+      // Cerrar modal de escaneo
+      if (modalSync) modalSync.classList.add("hidden");
+      return true;
+    }
+
+    // Fallo — mostrar error DENTRO del modal, no como toast atrás del blur
+    console.log("❌ No se encontró servidor");
+    logSyncAPK("No se encontró servidor en la red", "error");
+
+    if (syncStatusText) {
+      syncStatusText.textContent = "❌ No se encontró el servidor";
+    }
+    if (syncErrorContainer && syncErrorText) {
+      syncErrorContainer.classList.remove("hidden");
+      syncErrorText.textContent = "Si usás HotSpot: asegurate de que el servidor esté corriendo y que el teléfono esté conectado a la misma red WiFi (no solo la laptop).";
+    }
+
+    return false;
+  }
+
+  return false;
+}
+
+// ============================================
 // SINCRONIZAR VENTAS OFFLINE + CARGAR PRODUCTOS
 // ============================================
 window.sincronizar = async function() {
@@ -2479,182 +2606,25 @@ window.sincronizar = async function() {
 
   logSyncAPK("Inicio de sincronización manual (batch)");
 
+  // 1. Asegurar conexión al servidor (escaneo o IP manual)
+  var conectado = await _asegurarConexionServidor();
+  if (!conectado) return;
+
+  // 2. Ejecutar sync
+  var urlServidor = window.SERVER_URL;
   var btnSync = document.getElementById("btnSync");
   var syncIcon = document.getElementById("syncIcon");
-  var syncCount = document.getElementById("syncCount");
-
-  // Auto-detectar servidor si no hay uno configurado
-  if (!window.SERVER_URL) {
-    console.log("🔍 No hay servidor, auto-detectando...");
-    logSyncAPK("No hay servidor configurado, iniciando auto-detección");
-    
-    // Mostrar modal de progreso
-    var modalSync = document.getElementById("modalSyncProgress");
-    var syncStatusText = document.getElementById("syncStatusText");
-    var btnCancelSync = document.getElementById("btnCancelSync");
-    var btnManualIP = document.getElementById("btnManualIP");
-    
-    if (modalSync) {
-      modalSync.classList.remove("hidden");
-      syncStatusText.textContent = "Escaneando la red...";
-    }
-
-    // Variables de control
-    var syncCancelled = false;
-    var manualIPSet = false;
-
-    // Manejar botón Cancelar
-    if (btnCancelSync) {
-      btnCancelSync.onclick = function() {
-        syncCancelled = true;
-        cancelarEscaneo = true;
-        if (modalSync) modalSync.classList.add("hidden");
-        logSyncAPK("Sincronización cancelada por usuario", "warning");
-        mostrarMensaje("Sincronización cancelada", "info", 2000);
-      };
-    }
-
-    // Referencias a elementos de IP Manual
-    var syncScanView = document.getElementById("syncScanView");
-    var syncManualIPView = document.getElementById("syncManualIPView");
-    var inputManualIP = document.getElementById("inputManualIP");
-    var btnConfirmManualIP = document.getElementById("btnConfirmManualIP");
-    var btnCancelManualIP = document.getElementById("btnCancelManualIP");
-    var syncIPError = document.getElementById("syncIPError");
-    var syncURLPreview = document.getElementById("syncURLPreview");
-    var syncURLText = document.getElementById("syncURLText");
-
-    // Validar formato IPv4
-    function esIPValida(ip) {
-      if (!ip || ip.length < 7) return false;
-      var partes = ip.trim().split(".");
-      if (partes.length !== 4) return false;
-      return partes.every(function(octeto) {
-        var num = Number(octeto);
-        return !isNaN(num) && octeto.length > 0 && num >= 0 && num <= 255
-          && octeto === String(num); // evitar "01." como válido
-      });
-    }
-
-    // Actualizar preview de URL en vivo
-    function actualizarPreviewIP() {
-      var ip = inputManualIP.value.trim();
-      if (ip.length > 0) {
-        syncURLText.textContent = "http://" + ip + ":3000";
-        syncURLPreview.classList.remove("hidden");
-      } else {
-        syncURLPreview.classList.add("hidden");
-      }
-    }
-
-    // Limpiar estado de error
-    function limpiarErrorIP() {
-      syncIPError.classList.add("hidden");
-      inputManualIP.classList.remove("input-error");
-    }
-
-    // Manejar botón IP Manual → mostrar vista de ingreso
-    if (btnManualIP) {
-      btnManualIP.onclick = function() {
-        limpiarErrorIP();
-        inputManualIP.value = "";
-        syncURLPreview.classList.add("hidden");
-        if (syncScanView) syncScanView.classList.add("hidden");
-        if (syncManualIPView) syncManualIPView.classList.remove("hidden");
-        inputManualIP.focus();
-      };
-    }
-
-    // Preview en vivo mientras escribe
-    if (inputManualIP) {
-      inputManualIP.addEventListener("input", function() {
-        limpiarErrorIP();
-        actualizarPreviewIP();
-      });
-
-      // Enter en el input = confirmar
-      inputManualIP.addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          btnConfirmManualIP.click();
-        }
-      });
-    }
-
-    // Confirmar IP Manual
-    if (btnConfirmManualIP) {
-      btnConfirmManualIP.onclick = function() {
-        var ipIngresada = inputManualIP.value.trim();
-        if (!esIPValida(ipIngresada)) {
-          syncIPError.classList.remove("hidden");
-          inputManualIP.classList.add("input-error");
-          inputManualIP.focus();
-          return;
-        }
-
-        window.SERVER_URL = "http://" + ipIngresada + ":3000";
-        serverUrlCacheado = window.SERVER_URL;
-        if (DB.guardarServidorCacheado) {
-          DB.guardarServidorCacheado(window.SERVER_URL);
-        }
-        manualIPSet = true;
-        syncCancelled = true;
-        cancelarEscaneo = true;
-        if (modalSync) modalSync.classList.add("hidden");
-        logSyncAPK("Servidor configurado manualmente: " + window.SERVER_URL);
-        mostrarMensaje("✅ IP manual: " + window.SERVER_URL, "exito", 2000);
-      };
-    }
-
-    // Volver a vista de escaneo
-    if (btnCancelManualIP) {
-      btnCancelManualIP.onclick = function() {
-        limpiarErrorIP();
-        if (syncManualIPView) syncManualIPView.classList.add("hidden");
-        if (syncScanView) syncScanView.classList.remove("hidden");
-      };
-    }
-
-    if (DB.descubrirServidor) {
-      var servidorEncontrado = await DB.descubrirServidor();
-      
-      if (syncCancelled && !manualIPSet) {
-        logSyncAPK("Escaneo cancelado sin IP manual", "warning");
-        return;
-      }
-      
-      if (servidorEncontrado && !manualIPSet) {
-        window.SERVER_URL = servidorEncontrado;
-        serverUrlCacheado = servidorEncontrado;
-        console.log("✅ Servidor encontrado:", servidorEncontrado);
-        logSyncAPK("Servidor encontrado: " + servidorEncontrado);
-        mostrarMensaje("✅ Servidor: " + servidorEncontrado, "exito", 3000);
-      } else if (!manualIPSet && !servidorEncontrado) {
-        console.log("❌ No se encontró servidor");
-        if (modalSync) modalSync.classList.add("hidden");
-        logSyncAPK("No se encontró servidor en la red", "error");
-        mostrarMensaje("❌ No se encontró el servidor. Si usa HotSpot: active el servidor y verifique que el teléfono también esté conectado a WiFi (no solo la laptop).", "error", 8000);
-        return;
-      }
-    }
-
-    if (modalSync) modalSync.classList.add("hidden");
-  }
-
-  // Capturar URL ANTES de cualquier operación
-  var urlServidor = window.SERVER_URL;
 
   try {
     if (btnSync) btnSync.disabled = true;
     if (syncIcon) syncIcon.textContent = "⏳";
-
     mostrarMensaje("Sincronizando...", "info");
 
-    // ===== ÚNICO REQUEST BATCH =====
     var resultado = await DB.sincronizarCompleto(urlServidor);
 
     if (resultado.success) {
       modoOffline = false;
+      guardarUltimaSync();
 
       var parts = [];
       if (resultado.sincronizados) {
@@ -2693,24 +2663,19 @@ window.sincronizar = async function() {
       mostrarMensaje("⚠️ " + (resultado.error || "Error al sincronizar"), "warning", 4000);
     }
 
-    // Actualizar UI: recargar productos + recetas + ingredientes + indicadores
+  } catch (error) {
+    console.error("❌ Error sync:", error);
+    modoOffline = true;
+    logSyncAPK("Error general de sincronización: " + (error.message || "desconocido"), "error");
+    mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
+  } finally {
+    // Refrescar UI siempre (haya funcionado o no)
     await cargarProductos();
     await cargarRecetas();
     await cargarIngredientes();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
 
-  } catch (error) {
-    console.error("❌ Error sync:", error);
-    modoOffline = true;
-    logSyncAPK("Error general de sincronización: " + (error.message || "desconocido"), "error");
-    mostrarMensaje(error.message || "Error al sincronizar", "warning", 3000);
-    await cargarProductos();
-    await cargarRecetas();
-    await cargarIngredientes();
-    await actualizarIndicadorSync();
-    await actualizarPanelEstado();
-  } finally {
     if (btnSync) btnSync.disabled = false;
     if (syncIcon) syncIcon.textContent = "🔄";
     logSyncAPK("Botón de sincronizar reactivado");

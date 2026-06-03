@@ -8,6 +8,9 @@
 /**
  * Genera un timestamp en formato ISO con hora local del ordenador
  * Ejemplo: "2026-04-06T14:11:43.886" (sin Z ni offset, hora local exacta)
+ *
+ * ⚠️ DUPLICADA en src/public/js/database.js (function fechaLocalISO)
+ *    Mantener ambas sincronizadas manualmente — mismo algoritmo, distinto runtime.
  */
 export const fechaLocalISO = (fecha = new Date()) => {
   const year = fecha.getFullYear();

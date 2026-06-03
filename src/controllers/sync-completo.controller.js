@@ -135,7 +135,7 @@ export const sincronizarCompleto = async (req, res) => {
     console.log(`   ├─ Gastos:          ${gastos?.length || 0}`);
     console.log(`   └─ Elaboraciones:   ${elaboraciones?.length || 0}`);
 
-    // Si no viene nada, responder OK temprano
+    // Si no viene nada, igual escaneamos Pendientes para devolver ultimaFactura
     if (
       (!productos || !productos.length) &&
       (!abastecimientos || !abastecimientos.length) &&
@@ -144,10 +144,33 @@ export const sincronizarCompleto = async (req, res) => {
       (!gastos || !gastos.length) &&
       (!elaboraciones || !elaboraciones.length)
     ) {
+      let ultimaFactura = null;
+      try {
+        const { workbook } = await abrirExcel();
+        const hojaPendientes = workbook.sheet("Pendientes");
+        if (hojaPendientes) {
+          const { maxNum } = (() => {
+            let maxNum = 0;
+            let fila = 2;
+            while (true) {
+              const val = hojaPendientes.cell(`A${fila}`).value();
+              if (!val) break;
+              const num = parseInt(val.toString().trim(), 10);
+              if (!isNaN(num) && num > maxNum) maxNum = num;
+              fila++;
+            }
+            return { maxNum };
+          })();
+          ultimaFactura = maxNum > 0 ? String(maxNum).padStart(10, "0") : null;
+        }
+      } catch (_) {
+        // Si falla al abrir Excel, devolvemos sin ultimaFactura
+      }
       return res.json({
         success: true,
         sincronizados: {},
         remap: { codigos: {}, facturas: {} },
+        ultimaFactura,
       });
     }
 
@@ -286,7 +309,7 @@ export const sincronizarCompleto = async (req, res) => {
           }
 
           // Escribir línea en Pendientes
-          await escribirLineaVenta(hojaPendientes, {
+          escribirLineaVenta(hojaPendientes, {
             facturaId: facturaFinal,
             fechaHora: venta.fechaHora,
             codigoProducto: codProducto,
@@ -299,7 +322,7 @@ export const sincronizarCompleto = async (req, res) => {
           });
 
           // Descontar stock
-          await actualizarStock(workbook, codProducto, venta.cantidad);
+          actualizarStock(workbook, codProducto, venta.cantidad);
 
           countVentas++;
         }
@@ -328,7 +351,7 @@ export const sincronizarCompleto = async (req, res) => {
           hojaMerma.cell(`C${filaM}`).value(cantidad);
 
           // Descontar stock
-          await actualizarStock(workbook, codFinal, cantidad);
+          actualizarStock(workbook, codFinal, cantidad);
 
           countMermas++;
         }
@@ -386,6 +409,13 @@ export const sincronizarCompleto = async (req, res) => {
       // ════════════════════════════════════════
       await guardarExcel(workbook);
 
+      // Obtener la última factura de Pendientes para que el cliente
+      // actualice su referencia y no genere IDs duplicados offline
+      const { maxNum: maxFacturaNum } = escanearFacturasExistentes(hojaPendientes);
+      const ultimaFactura = maxFacturaNum > 0
+        ? String(maxFacturaNum).padStart(10, "0")
+        : null;
+
       return {
         sincronizados: {
           productos: countProductos,
@@ -399,6 +429,7 @@ export const sincronizarCompleto = async (req, res) => {
           codigos: remapCodigos,
           facturas: remapFacturas,
         },
+        ultimaFactura,
       };
     });
 
@@ -410,6 +441,7 @@ export const sincronizarCompleto = async (req, res) => {
       success: true,
       sincronizados: resultado.sincronizados,
       remap: resultado.remap,
+      ultimaFactura: resultado.ultimaFactura,
     });
   } catch (error) {
     console.error("❌ [sync-completo] Error:", error.message);

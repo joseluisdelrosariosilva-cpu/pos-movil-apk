@@ -103,15 +103,6 @@ app.post("/api/mutex/reiniciar", validarToken, (req, res) => {
   res.json({ ok: true, mensaje: "Cola del mutex reiniciada" });
 });
 
-// Ruta para ver estado público del servidor (sin autenticación)
-app.get("/api/estado-publico", (req, res) => {
-  res.json({
-    activo: true,
-    ip: obtenerIPLocal(),
-    puerto: PUERTO
-  });
-});
-
 // Ruta raíz con lógica de sesión
 app.get("/", (req, res) => {
   const ipCliente = req.ip;

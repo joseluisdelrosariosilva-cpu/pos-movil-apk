@@ -88,7 +88,7 @@ export const crearVenta = async (req, res) => {
       // 3. Escribir líneas en Pendientes
       for (const producto of productos) {
         const subtotal = producto.cantidad * producto.precio;
-        await escribirLineaVenta(hoja, {
+        escribirLineaVenta(hoja, {
           facturaId,
           fechaHora,
           codigoProducto: producto.codigo,
@@ -103,7 +103,7 @@ export const crearVenta = async (req, res) => {
 
       // 4. ACTUALIZAR STOCK en hoja Productos
       for (const producto of productos) {
-        await actualizarStock(workbook, producto.codigo, producto.cantidad);
+        actualizarStock(workbook, producto.codigo, producto.cantidad);
       }
 
       // 5. Guardar TODO (un solo save)

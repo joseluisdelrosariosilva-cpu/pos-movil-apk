@@ -338,6 +338,9 @@
     <div id="syncScanView">
       <h2 id="modalSyncTitulo">🔍 Buscando servidor...</h2>
       <p id="syncStatusText" class="modal-mensaje">Escaneando la red...</p>
+      <div id="syncErrorContainer" class="sync-error-container hidden">
+        <p id="syncErrorText"></p>
+      </div>
       <div class="modal-actions">
         <button type="button" id="btnCancelSync" class="modal-btn modal-btn-secundario">Cancelar</button>
         <button type="button" id="btnManualIP" class="modal-btn modal-btn-primario">IP Manual</button>
@@ -414,6 +417,7 @@
 
 <script src="/js/database.js"></script>
 <script src="/js/app.js"></script>
+
  
 </body>
 </html>

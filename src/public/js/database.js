@@ -6,6 +6,7 @@
 var db = null;
 var storageMode = "none"; // sqlite | local
 var cancelarEscaneo = false; // Bandera para cancelar escaneo de red
+var _servidorEncontrado = null; // Compartido entre escaneos paralelos
 
 const LS_KEYS = {
   productos: "posmovil_productos",
@@ -39,6 +40,91 @@ function guardarLocal(key, value) {
   }
 }
 
+// Lee un string de localStorage con retrocompatibilidad:
+//   - nuevo formato (guardarLocal → JSON.stringify) → JSON.parse
+//   - formato legacy (raw string) → devuelve raw
+function _leerString(key, fallback) {
+  try {
+    var raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    try { return JSON.parse(raw); } catch (_) { return raw; }
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/**
+ * Genera un ID único de factura basado en fecha como "4567800001" (prefijo + sufijo)
+ * El prefijo son días desde 1900-01-01, el sufijo es secuencial por día.
+ * Persiste en localStorage con guardarLocal() para detectar fallos de cuota.
+ */
+function generarFacturaId() {
+  var now = new Date();
+  var hoyISO = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+
+  // Leer referencia guardada del servidor Y su fecha (retrocompatible con datos legacy)
+  var ultimaReferencia = _leerString('posmovil_ultima_factura_referencia');
+  var fechaReferencia = _leerString('posmovil_fecha_referencia');
+
+  // Si tenemos referencia Y fecha, usarlas
+  if (ultimaReferencia && ultimaReferencia.length >= 10 && fechaReferencia) {
+    var prefijoRef = ultimaReferencia.substring(0, 5);
+    var sufijoRef = parseInt(ultimaReferencia.substring(5, 10)) || 0;
+    var refDate = new Date(fechaReferencia);
+    var todayDate = new Date(hoyISO);
+    var msPerDay = 1000 * 60 * 60 * 24;
+    var diasDiff = Math.floor((todayDate - refDate) / msPerDay);
+    var prefijoHoy = String(Number(prefijoRef) + diasDiff).padStart(5, '0');
+
+    if (diasDiff === 0) {
+      // Mismo día que la referencia, incrementar sufijo
+      var nuevoSufijo = sufijoRef + 1;
+      var sufijo = String(nuevoSufijo).padStart(5, '0');
+      var nuevoId = prefijoHoy + sufijo;
+
+      if (!guardarLocal('posmovil_ultima_factura_referencia', nuevoId)) {
+        console.error("🚨 [generarFacturaId] No se pudo guardar referencia — riesgo de ID duplicado");
+      }
+      guardarLocal('posmovil_ultimo_prefijo', prefijoHoy);
+      guardarLocal('posmovil_ultimo_sufijo', String(nuevoSufijo));
+
+      console.log('📋 FacturaID generado: ' + nuevoId + ' (mismo día que referencia)');
+      return nuevoId;
+    } else {
+      // Nuevo día (o días), empezar sufijo en 1
+      var nuevoId = prefijoHoy + "00001";
+
+      if (!guardarLocal('posmovil_ultima_factura_referencia', nuevoId)) {
+        console.error("🚨 [generarFacturaId] No se pudo guardar referencia — riesgo de ID duplicado");
+      }
+      guardarLocal('posmovil_ultimo_prefijo', prefijoHoy);
+      guardarLocal('posmovil_ultimo_sufijo', '1');
+      guardarLocal('posmovil_fecha_referencia', hoyISO);
+
+      console.log('📋 FacturaID generado: ' + nuevoId + ' (nuevo día, díasDiff=' + diasDiff + ')');
+      return nuevoId;
+    }
+  }
+
+  // Fallback: sin referencia, usar la fecha actual (primera vez)
+  var fechaBase = new Date(1900, 0, 1);
+  var diffMs = now - fechaBase;
+  var diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  var fechaSerial = diffDias + 2;
+  var prefijoHoy = String(Math.floor(fechaSerial)).padStart(5, '0');
+  var nuevoId = prefijoHoy + "00001";
+
+  if (!guardarLocal('posmovil_ultima_factura_referencia', nuevoId)) {
+    console.error("🚨 [generarFacturaId] No se pudo guardar referencia — riesgo de ID duplicado");
+  }
+  guardarLocal('posmovil_ultimo_prefijo', prefijoHoy);
+  guardarLocal('posmovil_ultimo_sufijo', '1');
+  guardarLocal('posmovil_fecha_referencia', hoyISO);
+
+  console.log('📋 FacturaID generado (sin referencia): ' + nuevoId);
+  return nuevoId;
+}
+
 function logSyncDebugAPK(mensaje, tipo) {
   if (tipo === "error") {
     console.error(mensaje);
@@ -56,6 +142,9 @@ function logSyncDebugAPK(mensaje, tipo) {
     // Evitar romper flujo por logger visual
   }
 }
+
+// ═══ LOG VISUAL PARA DEBUG EN APK (temporal) ═══
+
 
 function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.productos)) guardarLocal(LS_KEYS.productos, []);
@@ -314,6 +403,9 @@ function extraerFechaISO(valor) {
  * Genera timestamp en formato ISO con HORA LOCAL (sin UTC)
  * Ejemplo: "2026-05-31T23:00:00.000" (sin Z ni offset)
  * POLÍTICA: siempre usar hora local del dispositivo en toda la app
+ *
+ * ⚠️ DUPLICADA de src/utils/date.util.js (export const fechaLocalISO)
+ *    Mantener ambas sincronizadas manualmente — mismo algoritmo, distinto runtime.
  */
 function fechaLocalISO() {
   var f = new Date();
@@ -1603,8 +1695,37 @@ async function sincronizarCompleto(serverUrl) {
               pendientesGastos.length + pendientesElaborac.length;
 
   if (total === 0) {
-    logSyncDebugAPK("📦 [sync-completo] Nada pendiente, OK");
-    return { success: true, sincronizados: {}, remap: { codigos: {}, facturas: {} } };
+    logSyncDebugAPK("📦 [sync-completo] Sin datos pendientes — consultando solo referencia");
+    // Igual llamamos al servidor para obtener ultimaFactura
+    try {
+      var r = await fetch(url + "/api/sync/completo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-session-token": window.SESSION_TOKEN || "",
+        },
+        body: JSON.stringify({}),
+      });
+      if (r.ok) {
+        var resultVacio = await r.json();
+        if (resultVacio.ultimaFactura) {
+          var uf = resultVacio.ultimaFactura.toString();
+          guardarLocal('posmovil_ultima_factura_referencia', uf);
+          if (uf.length >= 10) {
+            guardarLocal('posmovil_ultimo_prefijo', uf.substring(0, 5));
+            guardarLocal('posmovil_ultimo_sufijo', parseInt(uf.substring(5, 10)) || 0);
+            var hoy = new Date().getFullYear() + '-' +
+                      String(new Date().getMonth() + 1).padStart(2, '0') + '-' +
+                      String(new Date().getDate()).padStart(2, '0');
+            guardarLocal('posmovil_fecha_referencia', hoy);
+          }
+        }
+        return { success: true, sincronizados: {}, remap: { codigos: {}, facturas: {} }, ultimaFactura: resultVacio.ultimaFactura || null };
+      }
+    } catch (e) {
+      console.error("📦 [sync-completo] Error consultando servidor vacío:", e.message);
+    }
+    return { success: true, sincronizados: {}, remap: { codigos: {}, facturas: {} }, ultimaFactura: null };
   }
 
   // Si solo hay elaboraciones, podemos continuar igual (se envían al servidor)
@@ -1734,27 +1855,39 @@ async function sincronizarCompleto(serverUrl) {
     if (result.remap && result.remap.facturas) {
       var facturasArray = Object.values(result.remap.facturas);
       if (facturasArray.length > 0) {
-        // Tomar la última factura del remap como referencia
-        var ultimaFactura = facturasArray[facturasArray.length - 1];
-        try {
-          localStorage.setItem('posmovil_ultima_factura_referencia', ultimaFactura);
-          var refStr = ultimaFactura.toString();
-          if (refStr.length >= 10) {
-            localStorage.setItem('posmovil_ultimo_prefijo', refStr.substring(0, 5));
-            localStorage.setItem('posmovil_ultimo_sufijo', parseInt(refStr.substring(5, 10)) || 0);
-            var hoyISO = new Date().getFullYear() + '-' +
-                        String(new Date().getMonth() + 1).padStart(2, '0') + '-' +
-                        String(new Date().getDate()).padStart(2, '0');
-            localStorage.setItem('posmovil_fecha_referencia', hoyISO);
-          }
-        } catch (e) {
-          console.warn("⚠️ [sync-completo] Error guardando referencia factura:", e);
+        var ultimaFacturaRemap = facturasArray[facturasArray.length - 1];
+        if (!guardarLocal('posmovil_ultima_factura_referencia', ultimaFacturaRemap)) {
+          console.error("🚨 [sync-completo] No se pudo guardar referencia factura — riesgo de ID duplicado");
+        }
+        var refStr = ultimaFacturaRemap.toString();
+        if (refStr.length >= 10) {
+          guardarLocal('posmovil_ultimo_prefijo', refStr.substring(0, 5));
+          guardarLocal('posmovil_ultimo_sufijo', parseInt(refStr.substring(5, 10)) || 0);
+          var hoyISO = new Date().getFullYear() + '-' +
+                      String(new Date().getMonth() + 1).padStart(2, '0') + '-' +
+                      String(new Date().getDate()).padStart(2, '0');
+          guardarLocal('posmovil_fecha_referencia', hoyISO);
         }
       }
     }
 
-    // 6. Guardar también la referencia de sincronización
-    guardarUltimaSync();
+    // 6. Guardar la última factura REAL del servidor (siempre que venga en la respuesta)
+    //    Esto asegura que después de cada sync el cliente tenga la referencia correcta
+    //    del último ID existente en datos.xlsx, incluso si no hubo conflictos de remap.
+    if (result.ultimaFactura) {
+      var ultimaFactura = result.ultimaFactura.toString();
+      if (!guardarLocal('posmovil_ultima_factura_referencia', ultimaFactura)) {
+        console.error("🚨 [sync-completo] No se pudo guardar referencia factura — riesgo de ID duplicado");
+      }
+      if (ultimaFactura.length >= 10) {
+        guardarLocal('posmovil_ultimo_prefijo', ultimaFactura.substring(0, 5));
+        guardarLocal('posmovil_ultimo_sufijo', parseInt(ultimaFactura.substring(5, 10)) || 0);
+        var hoyISO = new Date().getFullYear() + '-' +
+                    String(new Date().getMonth() + 1).padStart(2, '0') + '-' +
+                    String(new Date().getDate()).padStart(2, '0');
+        guardarLocal('posmovil_fecha_referencia', hoyISO);
+      }
+    }
 
     logSyncDebugAPK(
       "✅ [sync-completo] Batch completado: " +
@@ -1802,119 +1935,146 @@ async function leerGastosDelDia(fecha) {
 // ============================================
 // AUTO-DESCUBRIR SERVIDOR EN RED LOCAL
 // ============================================
-const SERVIDOR_CACHE_KEY = "servidor_cache";
-const SERVIDOR_CACHE_TTL = 1000 * 60 * 30; // 30 minutos
-
-async function descubrirServidor() {
-  // 1. Primero verificar si hay servidor cacheado válido
-  var servidorCacheado = await obtenerServidorCacheado();
-  if (servidorCacheado) {
-    console.log("🎯 [descubrirServidor] Usando servidor cacheado:", servidorCacheado);
-    return servidorCacheado;
-  }
-
-  // 2. Si no hay cache, escanear la red
-  var servidorEncontrado = await escanearRed();
-
-  // 3. Si se encontró, guardar en cache
-  if (servidorEncontrado) {
-    await guardarServidorCacheado(servidorEncontrado);
-    console.log("✅ [descubrirServidor] Servidor encontrado y cacheado:", servidorEncontrado);
-  }
-
-  return servidorEncontrado;
-}
+const SERVIDORES_LISTA_KEY = "servidores_lista";
+const MAX_SERVIDORES_GUARDADOS = 10;
 
 // ============================================
-// OBTENER SERVIDOR DESDE CACHE
+// LISTA PERSISTENTE DE SERVIDORES CONOCIDOS
+// Orden: auto-detectados primero, manuales después
+// Sin TTL — permanentes hasta que el usuario los borre
 // ============================================
-async function obtenerServidorCacheado() {
+
+async function _leerListaServidores() {
   if (storageMode !== "sqlite" || !db) {
     var cfgLocal = leerLocal(LS_KEYS.config, {});
-    var filaLocal = cfgLocal[SERVIDOR_CACHE_KEY];
-    if (!filaLocal) return null;
-
-    var ahoraLocal = Date.now();
-    if (ahoraLocal - (filaLocal.timestamp || 0) < SERVIDOR_CACHE_TTL) {
-      return filaLocal.valor;
-    }
-
-    delete cfgLocal[SERVIDOR_CACHE_KEY];
-    guardarLocal(LS_KEYS.config, cfgLocal);
-    return null;
+    return cfgLocal[SERVIDORES_LISTA_KEY] || [];
   }
-  
   try {
     var result = await db.execute(
-      "SELECT valor, timestamp FROM config WHERE clave = ?",
-      [SERVIDOR_CACHE_KEY]
+      "SELECT valor FROM config WHERE clave = ?",
+      [SERVIDORES_LISTA_KEY]
     );
-    
     if (result.values && result.values.length > 0) {
-      var fila = result.values[0];
-      var timestamp = fila.timestamp;
-      var ahora = Date.now();
-      
-      // Verificar si el cache aún es válido (menos de 30 min)
-      if (ahora - timestamp < SERVIDOR_CACHE_TTL) {
-        return fila.valor;
+      try {
+        return JSON.parse(result.values[0].valor);
+      } catch (e) {
+        return [];
       }
-      
-      // Cache expirado, eliminar
-      await db.execute("DELETE FROM config WHERE clave = ?", [SERVIDOR_CACHE_KEY]);
     }
-    
-    return null;
+    return [];
   } catch (e) {
-    console.error("❌ [obtenerServidorCacheado] Error:", e);
-    return null;
+    console.error("❌ [_leerListaServidores] Error:", e);
+    return [];
   }
 }
 
-// ============================================
-// GUARDAR SERVIDOR EN CACHE
-// ============================================
-async function guardarServidorCacheado(url) {
+async function _escribirListaServidores(lista) {
+  var json = JSON.stringify(lista);
   if (storageMode !== "sqlite" || !db) {
     var cfgLocal = leerLocal(LS_KEYS.config, {});
-    cfgLocal[SERVIDOR_CACHE_KEY] = { valor: url, timestamp: Date.now() };
+    cfgLocal[SERVIDORES_LISTA_KEY] = json;
     guardarLocal(LS_KEYS.config, cfgLocal);
-    console.log("✅ [guardarServidorCacheado] Cache local guardado:", url);
     return;
   }
-  
   try {
     await db.execute(
       "INSERT OR REPLACE INTO config (clave, valor, timestamp) VALUES (?, ?, ?)",
-      [SERVIDOR_CACHE_KEY, url, Date.now()]
+      [SERVIDORES_LISTA_KEY, json, Date.now()]
     );
-    console.log("✅ [guardarServidorCacheado] Cache guardado:", url);
   } catch (e) {
-    console.error("❌ [guardarServidorCacheado] Error:", e);
+    console.error("❌ [_escribirListaServidores] Error:", e);
+  }
+}
+
+/**
+ * Devuelve la lista completa de servidores conocidos (ordenados por prioridad).
+ */
+async function obtenerListaServidores() {
+  return await _leerListaServidores();
+}
+
+/**
+ * Agrega un servidor a la lista persistente.
+ * @param {string} url - URL del servidor (ej. "http://192.168.1.100:3000")
+ * @param {string} tipo - "auto" (va al inicio) | "manual" (va al final)
+ */
+async function agregarServidorConocido(url, tipo) {
+  var lista = await _leerListaServidores();
+
+  // Quitar duplicado si ya existe
+  var idx = lista.indexOf(url);
+  if (idx !== -1) lista.splice(idx, 1);
+
+  if (tipo === "auto") {
+    lista.unshift(url); // al principio
+  } else {
+    lista.push(url); // al final
+  }
+
+  // Limitar tamaño
+  if (lista.length > MAX_SERVIDORES_GUARDADOS) {
+    lista = lista.slice(0, MAX_SERVIDORES_GUARDADOS);
+  }
+
+  await _escribirListaServidores(lista);
+  console.log("✅ [agregarServidorConocido] Guardado (" + tipo + "):", url);
+}
+
+/**
+ * Limpia toda la lista de servidores conocidos.
+ */
+async function limpiarServidoresConocidos() {
+  await _escribirListaServidores([]);
+  console.log("🗑️ [limpiarServidoresConocidos] Lista eliminada");
+}
+
+// ============================================
+// PROBAR UN SERVIDOR (health check rápido)
+// ============================================
+async function probarServidor(url) {
+  try {
+    var res = await fetch(url + "/api/estado-publico", {
+      method: "GET",
+      signal: AbortSignal.timeout(2000)
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
   }
 }
 
 // ============================================
-// LIMPIAR CACHE DEL SERVIDOR
+// DESCUBRIR SERVIDOR (probando lista conocida + escaneo)
 // ============================================
-async function limpiarServidorCacheado() {
-  if (storageMode !== "sqlite" || !db) {
-    var cfgLocal = leerLocal(LS_KEYS.config, {});
-    delete cfgLocal[SERVIDOR_CACHE_KEY];
-    guardarLocal(LS_KEYS.config, cfgLocal);
-    console.log("🗑️ [limpiarServidorCacheado] Cache local eliminado");
-    return;
+async function descubrirServidor(onProgreso) {
+  // 1. Probar servidores conocidos en orden (auto-detectados primero)
+  var lista = await _leerListaServidores();
+  for (var i = 0; i < lista.length; i++) {
+    if (cancelarEscaneo) break;
+    var url = lista[i];
+    if (onProgreso) onProgreso("Probando " + url + "...");
+    console.log("🔍 [descubrirServidor] Probando servidor conocido:", url);
+    var ok = await probarServidor(url);
+    if (ok) {
+      console.log("🎯 [descubrirServidor] Usando servidor conocido:", url);
+      return url;
+    }
   }
-  
-  try {
-    await db.execute(
-      "DELETE FROM config WHERE clave = ?",
-      [SERVIDOR_CACHE_KEY]
-    );
-    console.log("🗑️ [limpiarServidorCacheado] Cache eliminado");
-  } catch (e) {
-    console.error("❌ [limpiarServidorCacheado] Error:", e);
+
+  // 2. Si ninguno respondió (y no se canceló), escanear la red
+  if (!cancelarEscaneo) {
+    var servidorEncontrado = await escanearRed(onProgreso);
+
+    // 3. Si se encontró, guardar en la lista
+    if (servidorEncontrado) {
+      await agregarServidorConocido(servidorEncontrado, "auto");
+      console.log("✅ [descubrirServidor] Servidor encontrado y guardado:", servidorEncontrado);
+    }
+
+    return servidorEncontrado;
   }
+
+  return null;
 }
 
 // ============================================
@@ -1926,10 +2086,11 @@ async function escanearRango(baseIP, puerto, ipLocal) {
   console.log("🔍 [escanearRango] Escaneando: " + baseIP + ".x");
 
   var batchSize = 25;
-  var timeoutMs = 800;
-  var encontrado = null;
+  var timeoutMs = 300;
 
   for (var batchStart = 1; batchStart <= 254; batchStart += batchSize) {
+    if (cancelarEscaneo || _servidorEncontrado) break;
+
     var promises = [];
 
     for (var i = 0; i < batchSize && (batchStart + i) <= 254; i++) {
@@ -1952,9 +2113,10 @@ async function escanearRango(baseIP, puerto, ipLocal) {
 
     for (var r = 0; r < resultados.length; r++) {
       if (resultados[r]) {
-        encontrado = resultados[r].url;
-        console.log("✅ [escanearRango] Servidor encontrado: " + encontrado);
-        return encontrado;
+        _servidorEncontrado = resultados[r].url;
+        cancelarEscaneo = true;
+        console.log("✅ [escanearRango] Servidor encontrado: " + _servidorEncontrado);
+        return _servidorEncontrado;
       }
     }
   }
@@ -1963,8 +2125,9 @@ async function escanearRango(baseIP, puerto, ipLocal) {
 }
 
 // ============================================
-async function escanearRed() {
-  cancelarEscaneo = false; // Reiniciar bandera de cancelación al iniciar
+async function escanearRed(onProgreso) {
+  cancelarEscaneo = false;
+  _servidorEncontrado = null;
   var puerto = 3000;
   var ipLocal = await obtenerIPLocal();
 
@@ -1987,19 +2150,14 @@ async function escanearRed() {
     }
   }
 
-  // Agregar siempre los rangos más comunes (wifi + tethering Android/iPhone)
+  // Agregar siempre los rangos más comunes (wifi + tethering Android)
   var rangosComunes = [
     { base: "192.168.1", origen: "wifi (común)" },
     { base: "192.168.43", origen: "Android tethering" },
     { base: "192.168.0", origen: "wifi alternativo" },
     { base: "10.0.0", origen: "tethering/otro" },
     { base: "10.0.1", origen: "tethering/otro" },
-    { base: "10.1.1", origen: "tethering" },
-    { base: "10.10.0", origen: "tethering" },
-    { base: "10.100.1", origen: "tethering" },
-    { base: "10.200.1", origen: "tethering" },
     { base: "10.225.81", origen: "tethering (caso actual)" },
-    { base: "172.20.10", origen: "iPhone tethering" },
   ];
 
   // Agregar los que no existen ya
@@ -2021,20 +2179,31 @@ async function escanearRed() {
 
   console.log("🔍 [escanearRed] Rangos a escanear:", rangos.map(function(r) { return r.base + " (" + r.origen + ")"; }).join(", "));
 
-  // Escanear cada rango
-  for (var k = 0; k < rangos.length; k++) {
-    // Verificar si se solicitó cancelar
+  // Escanear rangos en paralelo (hasta 3 a la vez)
+  var concurrency = 3;
+  var totalRangos = rangos.length;
+
+  for (var k = 0; k < totalRangos; k += concurrency) {
     if (cancelarEscaneo) {
       console.log("🛑 [escanearRed] Escaneo cancelado por usuario");
-      cancelarEscaneo = false; // Reiniciar bandera
+      cancelarEscaneo = false;
       return null;
     }
 
-    var encontrado = await escanearRango(rangos[k].base, puerto, ipLocal);
+    var batch = rangos.slice(k, k + concurrency);
+    var batchNum = Math.floor(k / concurrency) + 1;
+    var totalBatches = Math.ceil(totalRangos / concurrency);
 
-    if (encontrado) {
-      return encontrado;
+    if (onProgreso) {
+      var nombres = batch.map(function(r) { return r.base; }).join(", ");
+      onProgreso("Escaneando... (grupo " + batchNum + "/" + totalBatches + ": " + nombres + ")");
     }
+
+    await Promise.all(batch.map(function(r) {
+      return escanearRango(r.base, puerto, ipLocal);
+    }));
+
+    if (_servidorEncontrado) return _servidorEncontrado;
   }
 
   console.error("❌ [escanearRed] No se encontró servidor en ningún rango");
@@ -2531,9 +2700,9 @@ window.Database = {
   contarMermasPendientes: contarMermasPendientes,
   getResumenOffline: getResumenOffline,
   limpiarVentasAntiguas: limpiarVentasAntiguas,
-  obtenerServidorCacheado: obtenerServidorCacheado,
-  guardarServidorCacheado: guardarServidorCacheado,
-  limpiarServidorCacheado: limpiarServidorCacheado,
+  obtenerListaServidores: obtenerListaServidores,
+  agregarServidorConocido: agregarServidorConocido,
+  limpiarServidoresConocidos: limpiarServidoresConocidos,
   descubrirServidor: descubrirServidor,
   // Funciones para nuevo producto
   getUltimoCodigoProducto: getUltimoCodigoProducto,
