@@ -1,7 +1,9 @@
 // ============================================
-// CONTROLLER: Resumen de ventas del día
+// CONTROLLER: Resumen de ventas por rango de fechas
 // ============================================
-// Endpoint: GET /api/resumen
+// Endpoint: GET /api/resumen?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Si no se envía desde, se usa el día actual
+// Si no se envía hasta, se usa el mismo día que desde
 // Devuelve: total vendido, ventas por producto, efectivo y transferencia
 // ============================================
 
@@ -9,10 +11,14 @@ import { abrirExcel } from "../utils/excelHelper.js";
 
 const HOJA_PENDIENTES = "Pendientes";
 
-export const getResumenDia = async (req, res) => {
+export const getResumen = async (req, res) => {
   try {
     const ahora = new Date();
-    const fechaHoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+
+    // Obtener rango desde query params (backward compatible: si no hay params, solo hoy)
+    const desde = req.query.desde || hoy;
+    const hasta = req.query.hasta || desde;
 
     // Abrir Excel
     const { workbook, hoja } = await abrirExcel();
@@ -23,7 +29,8 @@ export const getResumenDia = async (req, res) => {
 
     if (datos.length < 2) {
       return res.json({
-        fecha: fechaHoy,
+        desde: desde,
+        hasta: hasta,
         totalIngresado: 0,
         efectivo: 0,
         transferencia: 0,
@@ -61,9 +68,9 @@ export const getResumenDia = async (req, res) => {
         continue;
       }
 
-      // Verificar si es de hoy
+      // Verificar si está dentro del rango de fechas
       const fechaVenta = fechaHora ? fechaHora.toString().split("T")[0] : "";
-      if (fechaVenta !== fechaHoy) {
+      if (fechaVenta < desde || fechaVenta > hasta) {
         continue;
       }
 
@@ -103,7 +110,8 @@ export const getResumenDia = async (req, res) => {
 
     // Responder
     res.json({
-      fecha: fechaHoy,
+      desde: desde,
+      hasta: hasta,
       totalIngresado: Math.round(totalIngresado * 1000) / 1000,
       efectivo: Math.round(totalEfectivo * 1000) / 1000,
       transferencia: Math.round(totalTransferencia * 1000) / 1000,
@@ -116,7 +124,7 @@ export const getResumenDia = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("❌ Error en getResumenDia:", error.message);
+    console.error("❌ Error en getResumen:", error.message);
     res.status(500).json({
       error: "Error al obtener resumen",
       detalle: error.message,

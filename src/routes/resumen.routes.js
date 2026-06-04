@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { getResumenDia } from "../controllers/resumen.controller.js";
+import { getResumen } from "../controllers/resumen.controller.js";
 
 const router = Router();
 
-// GET /api/resumen - Resumen de ventas del día
-router.get("/resumen", getResumenDia);
+// GET /api/resumen?desde=YYYY-MM-DD&hasta=YYYY-MM-DD - Resumen de ventas por rango
+router.get("/resumen", getResumen);
 
 export default router;

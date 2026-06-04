@@ -136,10 +136,16 @@
   <div class="modal-card">
     <h2 id="modalResumenTitulo">📊 Resumen del Día</h2>
 
-    <!-- Selector de fecha -->
-    <div class="resumen-fecha-selector">
-      <label for="inputFechaResumen">📅 Fecha</label>
-      <input type="date" id="inputFechaResumen" value="">
+    <!-- Selector de rango de fechas -->
+    <div class="resumen-fecha-rango">
+      <div class="resumen-fecha-grupo">
+        <label for="inputFechaResumenDesde">📅 Desde</label>
+        <input type="date" id="inputFechaResumenDesde" value="">
+      </div>
+      <div class="resumen-fecha-grupo">
+        <label for="inputFechaResumenHasta">📅 Hasta</label>
+        <input type="date" id="inputFechaResumenHasta" value="">
+      </div>
     </div>
 
     <div id="contenidoResumen" class="resumen-contenido">

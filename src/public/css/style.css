@@ -416,7 +416,7 @@ body {
 .resumen-fecha-selector {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 16px;
   padding: 10px 16px;
   background: var(--bg-secondary);
@@ -431,9 +431,23 @@ body {
   flex-shrink: 0;
 }
 
-.resumen-fecha-selector input[type="date"] {
+.resumen-fecha-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+}
+
+.resumen-fecha-rango {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.resumen-fecha-selector input[type="date"],
+.resumen-fecha-rango input[type="date"] {
+  width: 100%;
   padding: 10px 16px;
   background-color: var(--bg-input);
   border: none;
@@ -446,13 +460,16 @@ body {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
+  box-sizing: border-box;
 }
 
-.resumen-fecha-selector input[type="date"]:focus {
+.resumen-fecha-selector input[type="date"]:focus,
+.resumen-fecha-rango input[type="date"]:focus {
   box-shadow: 0 0 0 2px var(--accent);
 }
 
-.resumen-fecha-selector input[type="date"]::-webkit-calendar-picker-indicator {
+.resumen-fecha-selector input[type="date"]::-webkit-calendar-picker-indicator,
+.resumen-fecha-rango input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
   padding: 4px;
@@ -463,6 +480,11 @@ body {
   .resumen-fecha-selector {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
+  }
+
+  .resumen-fecha-rango {
+    flex-direction: column;
     gap: 8px;
   }
 }

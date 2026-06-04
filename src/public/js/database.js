@@ -948,9 +948,9 @@ async function getVentasPendientes() {
 }
 
 // ============================================
-// OBTENER RESUMEN OFFLINE DESDE SQLite (ventas del día)
+// OBTENER RESUMEN OFFLINE DESDE SQLite (ventas por rango de fechas)
 // ============================================
-async function getResumenOffline(fechaISO) {
+async function getResumenOffline(desde, hasta) {
   try {
     var ventas = [];
 
@@ -963,14 +963,16 @@ async function getResumenOffline(fechaISO) {
       ventas = leerLocal(LS_KEYS.ventas, []);
     }
 
-    var fechaFiltro = fechaISO || fechaLocalHoyISO();
+    var fechaDesde = desde || fechaLocalHoyISO();
+    var fechaHasta = hasta || fechaDesde;
     ventas = ventas.filter(function(v) {
-      return extraerFechaISO(v.fecha_hora || v.fechaHora) === fechaFiltro;
+      var fechaVenta = extraerFechaISO(v.fecha_hora || v.fechaHora);
+      return fechaVenta >= fechaDesde && fechaVenta <= fechaHasta;
     });
 
     if (ventas.length === 0) {
-      // Aún sin ventas, leer gastos del día
-      var gastos = await leerGastosDelDia(fechaFiltro);
+      // Sin ventas en el rango, leer gastos del rango
+      var gastos = await leerGastosDelDia(fechaDesde, fechaHasta);
       var totalGastos = gastos.reduce(function(acc, g) { return acc + Number(g.monto || 0); }, 0);
       return {
         totalIngresado: 0,
@@ -1028,8 +1030,8 @@ async function getResumenOffline(fechaISO) {
     // Ordenar por cantidad descendente
     productosVendidos.sort(function(a, b) { return b.cantidad - a.cantidad; });
 
-    // ---- GASTOS DEL DÍA ----
-    var gastos = await leerGastosDelDia(fechaFiltro);
+    // ---- GASTOS DEL RANGO ----
+    var gastos = await leerGastosDelDia(fechaDesde, fechaHasta);
     var totalGastos = gastos.reduce(function(acc, g) { return acc + Number(g.monto || 0); }, 0);
 
     return {
@@ -1907,9 +1909,9 @@ async function sincronizarCompleto(serverUrl) {
 }
 
 // ============================================
-// LEER GASTOS DEL DÍA DESDE BD LOCAL
+// LEER GASTOS POR RANGO DE FECHAS DESDE BD LOCAL
 // ============================================
-async function leerGastosDelDia(fecha) {
+async function leerGastosDelDia(desde, hasta) {
   var gastos = [];
   if (storageMode === "sqlite" && db) {
     try {
@@ -1921,8 +1923,11 @@ async function leerGastosDelDia(fecha) {
   } else {
     gastos = leerLocal(LS_KEYS.gastos, []);
   }
+  var fechaDesde = desde || fechaLocalHoyISO();
+  var fechaHasta = hasta || fechaDesde;
   gastos = gastos.filter(function(g) {
-    return (g.fecha || "").substring(0, 10) === fecha;
+    var f = (g.fecha || "").substring(0, 10);
+    return f >= fechaDesde && f <= fechaHasta;
   });
   return gastos.map(function(g) {
     return {

@@ -2054,20 +2054,39 @@ function probarModalManual() {
 }
 
 // ============================================
-// MOSTRAR RESUMEN DEL DÍA (offline desde SQLite)
+// MOSTRAR RESUMEN POR RANGO DE FECHAS (offline desde SQLite)
 // ============================================
-window.mostrarResumen = async function(fechaISO) {
+window.mostrarResumen = async function(desde, hasta) {
   var modalResumen = document.getElementById("modalResumen");
   if (!modalResumen) return;
 
   // Mostrar modal
   modalResumen.classList.remove("hidden");
 
-  // Actualizar título con la fecha seleccionada
+  // Inicializar inputs de fecha si están vacíos
+  var desdeInput = document.getElementById("inputFechaResumenDesde");
+  var hastaInput = document.getElementById("inputFechaResumenHasta");
+  var ahora = new Date();
+  var hoy = ahora.getFullYear() + "-" + String(ahora.getMonth() + 1).padStart(2, "0") + "-" + String(ahora.getDate()).padStart(2, "0");
+  if (desdeInput && !desdeInput.value) {
+    desdeInput.value = desde || hoy;
+  }
+  if (hastaInput && !hastaInput.value) {
+    hastaInput.value = hasta || hoy;
+  }
+  // Tomar el valor actual de los inputs (pueden haber cambiado desde la última vez)
+  var fechaDesde = desdeInput ? desdeInput.value : (desde || hoy);
+  var fechaHasta = hastaInput ? hastaInput.value : (hasta || fechaDesde);
+
+  // Actualizar título con el rango seleccionado
   var tituloEl = document.getElementById("modalResumenTitulo");
   if (tituloEl) {
-    var fechaTexto = fechaISO || new Date().toLocaleDateString('es-ES');
-    tituloEl.textContent = "📊 Resumen - " + fechaTexto;
+    if (fechaDesde && fechaHasta && fechaHasta !== fechaDesde) {
+      tituloEl.textContent = "📊 Resumen - " + fechaDesde + " a " + fechaHasta;
+    } else {
+      var fechaTexto = fechaDesde || new Date().toLocaleDateString('es-ES');
+      tituloEl.textContent = "📊 Resumen - " + fechaTexto;
+    }
   }
 
   var totalEl = document.getElementById("resumenTotal");
@@ -2085,7 +2104,7 @@ window.mostrarResumen = async function(fechaISO) {
     console.log("📦 Cargando resumen desde SQLite (offline)");
     
     try {
-      var data = await DB.getResumenOffline(fechaISO);
+      var data = await DB.getResumenOffline(fechaDesde, fechaHasta);
       
       actualizarResumenUI(data);
       return;
@@ -2097,7 +2116,14 @@ window.mostrarResumen = async function(fechaISO) {
   // Fallback al servidor online
   try {
     console.log("🌐 Cargando resumen desde servidor");
-    var response = await fetch(obtenerUrlServidor() + "/api/resumen", {
+    var params = "";
+    if (fechaDesde) {
+      params = "?desde=" + encodeURIComponent(fechaDesde);
+      if (fechaHasta) {
+        params += "&hasta=" + encodeURIComponent(fechaHasta);
+      }
+    }
+    var response = await fetch(obtenerUrlServidor() + "/api/resumen" + params, {
       headers: {
         "x-session-token": window.SESSION_TOKEN || "",
       },
@@ -2195,15 +2221,23 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // NUEVO: Event listener para selector de fecha
-  var inputFechaResumen = document.getElementById("inputFechaResumen");
-  if (inputFechaResumen) {
-    inputFechaResumen.addEventListener("change", function(e) {
-      var fechaSeleccionada = e.target.value;  // Formato YYYY-MM-DD
-      if (fechaSeleccionada) {
-        window.mostrarResumen(fechaSeleccionada);
-      }
-    });
+  // Event listeners para los selectores de fecha del resumen
+  function consultarResumen() {
+    var desdeInput = document.getElementById("inputFechaResumenDesde");
+    var hastaInput = document.getElementById("inputFechaResumenHasta");
+    window.mostrarResumen(
+      desdeInput ? desdeInput.value : "",
+      hastaInput ? hastaInput.value : ""
+    );
+  }
+
+  var desdeInput = document.getElementById("inputFechaResumenDesde");
+  var hastaInput = document.getElementById("inputFechaResumenHasta");
+  if (desdeInput) {
+    desdeInput.addEventListener("change", consultarResumen);
+  }
+  if (hastaInput) {
+    hastaInput.addEventListener("change", consultarResumen);
   }
 });
 
