@@ -145,6 +145,25 @@ function logSyncDebugAPK(mensaje, tipo) {
 
 // ═══ LOG VISUAL PARA DEBUG EN APK (temporal) ═══
 
+/**
+ * Helper para operaciones SQLite con fallback automático a localStorage.
+ * Elimina la duplicación del guard (storageMode !== "sqlite" || !db)
+ * y el try/catch con mismo fallback en ~20 funciones.
+ *
+ * @param {function(db): Promise<any>} operacion - Recibe db, ejecuta SQL
+ * @param {function(): any} fallback - Se ejecuta si no hay SQLite o si falla
+ */
+async function conSQLite(operacion, fallback) {
+  if (storageMode !== "sqlite" || !db) {
+    return typeof fallback === "function" ? await fallback() : fallback;
+  }
+  try {
+    return await operacion(db);
+  } catch (error) {
+    console.error("❌ Error en operación SQLite:", error);
+    return typeof fallback === "function" ? await fallback() : fallback;
+  }
+}
 
 function asegurarStoreLocal() {
   if (!localStorage.getItem(LS_KEYS.productos)) guardarLocal(LS_KEYS.productos, []);
@@ -628,21 +647,15 @@ async function guardarEntradaProductoCompleto(producto) {
 // OBTENER PRODUCTOS DESDE SQLite
 // ============================================
 async function getProductosLocal() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.productos, []);
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT codigo, nombre, precio, disponibilidad FROM productos ORDER BY nombre"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo productos:", error);
-    console.error("Error consultando productos SQLite:", error);
-    // No matar modo SQLite, solo fallback temporal
-    return leerLocal(LS_KEYS.productos, []);
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT codigo, nombre, precio, disponibilidad FROM productos ORDER BY nombre"
+      );
+      return result.values || [];
+    },
+    () => leerLocal(LS_KEYS.productos, [])
+  );
 }
 
 // ============================================
@@ -651,30 +664,23 @@ async function getProductosLocal() {
 async function syncProductosLocal(productos) {
   var normalizados = (productos || []).map(normalizarProducto);
 
-  if (storageMode !== "sqlite" || !db) {
-    return guardarLocal(LS_KEYS.productos, normalizados);
-  }
+  return conSQLite(
+    async (db) => {
+      await db.execute("DELETE FROM productos");
 
-  try {
-    // Limpiar tabla existente
-    await db.execute("DELETE FROM productos");
+      for (var i = 0; i < normalizados.length; i++) {
+        var p = normalizados[i];
+        await db.execute(
+          "INSERT OR REPLACE INTO productos (codigo, nombre, precio, disponibilidad) VALUES (?, ?, ?, ?)",
+          [p.codigo, p.nombre, p.precio || 0, p.disponibilidad || 0]
+        );
+      }
 
-    // Insertar cada producto
-    for (var i = 0; i < normalizados.length; i++) {
-      var p = normalizados[i];
-      await db.execute(
-        "INSERT OR REPLACE INTO productos (codigo, nombre, precio, disponibilidad) VALUES (?, ?, ?, ?)",
-        [p.codigo, p.nombre, p.precio || 0, p.disponibilidad || 0]
-      );
-    }
-
-    console.log("✅ " + normalizados.length + " productos guardados en SQLite");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando productos:", error);
-    console.error("Error guardando productos SQLite:", error);
-    return guardarLocal(LS_KEYS.productos, normalizados);
-  }
+      console.log("✅ " + normalizados.length + " productos guardados en SQLite");
+      return true;
+    },
+    () => guardarLocal(LS_KEYS.productos, normalizados)
+  );
 }
 
 // ============================================
@@ -692,43 +698,35 @@ async function syncRecetasLocal(recetas) {
     };
   });
 
-  if (storageMode !== "sqlite" || !db) {
-    return guardarLocal(LS_KEYS.recetas, normalizadas);
-  }
+  return conSQLite(
+    async (db) => {
+      await db.execute("DELETE FROM recetas");
 
-  try {
-    await db.execute("DELETE FROM recetas");
+      for (var i = 0; i < normalizadas.length; i++) {
+        var r = normalizadas[i];
+        await db.execute(
+          "INSERT OR REPLACE INTO recetas (nombre, cant_lote, precio_venta, precio_costo) VALUES (?, ?, ?, ?)",
+          [r.nombre, r.cant_lote, r.precio_venta, r.precio_costo]
+        );
+      }
 
-    for (var i = 0; i < normalizadas.length; i++) {
-      var r = normalizadas[i];
-      await db.execute(
-        "INSERT OR REPLACE INTO recetas (nombre, cant_lote, precio_venta, precio_costo) VALUES (?, ?, ?, ?)",
-        [r.nombre, r.cant_lote, r.precio_venta, r.precio_costo]
-      );
-    }
-
-    console.log("✅ " + normalizadas.length + " recetas guardadas en SQLite");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando recetas:", error);
-    return guardarLocal(LS_KEYS.recetas, normalizadas);
-  }
+      console.log("✅ " + normalizadas.length + " recetas guardadas en SQLite");
+      return true;
+    },
+    () => guardarLocal(LS_KEYS.recetas, normalizadas)
+  );
 }
 
 async function getRecetasLocal() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.recetas, []);
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT nombre, cant_lote, precio_venta, precio_costo FROM recetas ORDER BY nombre"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo recetas:", error);
-    return leerLocal(LS_KEYS.recetas, []);
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT nombre, cant_lote, precio_venta, precio_costo FROM recetas ORDER BY nombre"
+      );
+      return result.values || [];
+    },
+    () => leerLocal(LS_KEYS.recetas, [])
+  );
 }
 
 // ============================================
@@ -744,43 +742,35 @@ async function syncIngredientesLocal(ingredientes) {
     };
   });
 
-  if (storageMode !== "sqlite" || !db) {
-    return guardarLocal(LS_KEYS.ingredientes, normalizadas);
-  }
+  return conSQLite(
+    async (db) => {
+      await db.execute("DELETE FROM ingredientes");
 
-  try {
-    await db.execute("DELETE FROM ingredientes");
+      for (var i = 0; i < normalizadas.length; i++) {
+        var ing = normalizadas[i];
+        await db.execute(
+          "INSERT INTO ingredientes (ingrediente, cantidad, unidad, receta) VALUES (?, ?, ?, ?)",
+          [ing.ingrediente, ing.cantidad, ing.unidad, ing.receta]
+        );
+      }
 
-    for (var i = 0; i < normalizadas.length; i++) {
-      var ing = normalizadas[i];
-      await db.execute(
-        "INSERT INTO ingredientes (ingrediente, cantidad, unidad, receta) VALUES (?, ?, ?, ?)",
-        [ing.ingrediente, ing.cantidad, ing.unidad, ing.receta]
-      );
-    }
-
-    console.log("✅ " + normalizadas.length + " ingredientes guardados en SQLite");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando ingredientes:", error);
-    return guardarLocal(LS_KEYS.ingredientes, normalizadas);
-  }
+      console.log("✅ " + normalizadas.length + " ingredientes guardados en SQLite");
+      return true;
+    },
+    () => guardarLocal(LS_KEYS.ingredientes, normalizadas)
+  );
 }
 
 async function getIngredientesLocal() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.ingredientes, []);
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT ingrediente, cantidad, unidad, receta FROM ingredientes ORDER BY receta, ingrediente"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo ingredientes:", error);
-    return leerLocal(LS_KEYS.ingredientes, []);
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT ingrediente, cantidad, unidad, receta FROM ingredientes ORDER BY receta, ingrediente"
+      );
+      return result.values || [];
+    },
+    () => leerLocal(LS_KEYS.ingredientes, [])
+  );
 }
 
 // ============================================
@@ -791,40 +781,14 @@ async function guardarVentaOffline(venta) {
     return false;
   }
 
-  if (storageMode !== "sqlite" || !db) {
-    var actuales = leerLocal(LS_KEYS.ventas, []);
-    var lineas = construirLineasVenta(venta, 0);
-    return guardarLocal(LS_KEYS.ventas, actuales.concat(lineas));
-  }
+  return conSQLite(
+    async (db) => {
+      for (var i = 0; i < venta.productos.length; i++) {
+        var item = venta.productos[i];
 
-  try {
-    for (var i = 0; i < venta.productos.length; i++) {
-      var item = venta.productos[i];
-
-      try {
-        await db.execute(
-          "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectivo, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-          [
-            venta.facturaId,
-            venta.fechaHora,
-            item.codigo,
-            item.nombre,
-            item.cantidad,
-            item.precio,
-            item.cantidad * item.precio,
-            venta.pago.efectivo,
-            venta.pago.transferencia,
-          ]
-        );
-      } catch (insertError) {
-        // Compatibilidad con esquemas viejos que usan 'efectividad'
-        if (
-          insertError &&
-          insertError.message &&
-          insertError.message.indexOf("efectivo") !== -1
-        ) {
+        try {
           await db.execute(
-            "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectividad, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectivo, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
             [
               venta.facturaId,
               venta.fechaHora,
@@ -837,21 +801,42 @@ async function guardarVentaOffline(venta) {
               venta.pago.transferencia,
             ]
           );
-        } else {
-          throw insertError;
+        } catch (insertError) {
+          // Compatibilidad con esquemas viejos que usan 'efectividad'
+          if (
+            insertError &&
+            insertError.message &&
+            insertError.message.indexOf("efectivo") !== -1
+          ) {
+            await db.execute(
+              "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectividad, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+              [
+                venta.facturaId,
+                venta.fechaHora,
+                item.codigo,
+                item.nombre,
+                item.cantidad,
+                item.precio,
+                item.cantidad * item.precio,
+                venta.pago.efectivo,
+                venta.pago.transferencia,
+              ]
+            );
+          } else {
+            throw insertError;
+          }
         }
       }
-    }
 
-    console.log("✅ Venta guardada offline");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando venta offline:", error);
-    console.error("Error guardando venta SQLite:", error);
-    var actuales2 = leerLocal(LS_KEYS.ventas, []);
-    var lineas2 = construirLineasVenta(venta, 0);
-    return guardarLocal(LS_KEYS.ventas, actuales2.concat(lineas2));
-  }
+      console.log("✅ Venta guardada offline");
+      return true;
+    },
+    function() {
+      var actuales = leerLocal(LS_KEYS.ventas, []);
+      var lineas = construirLineasVenta(venta, 0);
+      return guardarLocal(LS_KEYS.ventas, actuales.concat(lineas));
+    }
+  );
 }
 
 // ============================================
@@ -865,37 +850,13 @@ async function guardarVentaOnlineLocal(venta, facturaIdServidor) {
 
   var lineasVenta = construirLineasVenta(venta, 1, facturaIdServidor);
 
-  if (storageMode !== "sqlite" || !db) {
-    var actuales = leerLocal(LS_KEYS.ventas, []);
-    return guardarLocal(LS_KEYS.ventas, actuales.concat(lineasVenta));
-  }
-
-  try {
-    for (var i = 0; i < lineasVenta.length; i++) {
-      var l = lineasVenta[i];
-      try {
-        await db.execute(
-          "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectivo, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-          [
-            l.factura_id,
-            l.fecha_hora,
-            l.codigo_producto,
-            l.nombre,
-            l.cantidad,
-            l.precio,
-            l.subtotal,
-            l.efectivo,
-            l.transferencia,
-          ]
-        );
-      } catch (insertError) {
-        if (
-          insertError &&
-          insertError.message &&
-          insertError.message.indexOf("efectivo") !== -1
-        ) {
+  return conSQLite(
+    async (db) => {
+      for (var i = 0; i < lineasVenta.length; i++) {
+        var l = lineasVenta[i];
+        try {
           await db.execute(
-            "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectividad, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+            "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectivo, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
             [
               l.factura_id,
               l.fecha_hora,
@@ -908,43 +869,58 @@ async function guardarVentaOnlineLocal(venta, facturaIdServidor) {
               l.transferencia,
             ]
           );
-        } else {
-          throw insertError;
+        } catch (insertError) {
+          if (
+            insertError &&
+            insertError.message &&
+            insertError.message.indexOf("efectivo") !== -1
+          ) {
+            await db.execute(
+              "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectividad, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+              [
+                l.factura_id,
+                l.fecha_hora,
+                l.codigo_producto,
+                l.nombre,
+                l.cantidad,
+                l.precio,
+                l.subtotal,
+                l.efectivo,
+                l.transferencia,
+              ]
+            );
+          } else {
+            throw insertError;
+          }
         }
       }
-    }
 
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando venta online local:", error);
-    console.error("Error guardando online local SQLite:", error);
-    var actuales2 = leerLocal(LS_KEYS.ventas, []);
-    return guardarLocal(LS_KEYS.ventas, actuales2.concat(lineasVenta));
-  }
+      return true;
+    },
+    function() {
+      var actuales = leerLocal(LS_KEYS.ventas, []);
+      return guardarLocal(LS_KEYS.ventas, actuales.concat(lineasVenta));
+    }
+  );
 }
 
 // ============================================
 // OBTENER VENTAS PENDIENTES DE SYNC
 // ============================================
 async function getVentasPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.ventas, []).filter(function(v) {
-      return Number(v.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM ventas_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo ventas pendientes:", error);
-    console.error("Error leyendo pendientes SQLite:", error);
-    return leerLocal(LS_KEYS.ventas, []).filter(function(v) {
-      return Number(v.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM ventas_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.ventas, []).filter(function(v) {
+        return Number(v.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // ============================================
@@ -1057,22 +1033,15 @@ async function getResumenOffline(desde, hasta) {
 // CONTAR VENTAS PENDIENTES
 // ============================================
 async function contarVentasPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return contarFacturasPendientesLocal(leerLocal(LS_KEYS.ventas, []));
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(DISTINCT factura_id) as count FROM ventas_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    var errMsg = error.message || String(error);
-    console.error("❌ Error contando pendientes:", error);
-    console.error("Error contando pendientes SQLite:", error);
-    // No matar el modo SQLite por un error de consulta
-    return contarFacturasPendientesLocal(leerLocal(LS_KEYS.ventas, []));
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(DISTINCT factura_id) as count FROM ventas_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    () => contarFacturasPendientesLocal(leerLocal(LS_KEYS.ventas, []))
+  );
 }
 
 // Marcar ventas como sincronizadas (helper para batch completo)
@@ -1109,91 +1078,70 @@ async function guardarMermaOffline(merma) {
     return false;
   }
 
-  if (storageMode !== "sqlite" || !db) {
-    var actuales = leerLocal(LS_KEYS.mermas, []);
-    var lineas = [];
-    for (var i = 0; i < merma.productos.length; i++) {
-      var item = merma.productos[i];
-      lineas.push({
-        id: Date.now() + i + Math.floor(Math.random() * 1000),
+  function construirLineasMerma() {
+    return (merma.productos || []).map(function(item, idx) {
+      return {
+        id: Date.now() + idx + Math.floor(Math.random() * 1000),
         codigo_producto: item.codigo,
         nombre: item.nombre,
         cantidad: Number(item.cantidad || 0),
         fecha_hora: merma.fechaHora,
         synced: 0,
-      });
-    }
-    return guardarLocal(LS_KEYS.mermas, actuales.concat(lineas));
+      };
+    });
   }
 
-  try {
-    for (var j = 0; j < merma.productos.length; j++) {
-      var prod = merma.productos[j];
-      await db.execute(
-        "INSERT INTO mermas_pending (codigo_producto, nombre, cantidad, fecha_hora, synced) VALUES (?, ?, ?, ?, 0)",
-        [prod.codigo, prod.nombre, prod.cantidad, merma.fechaHora]
-      );
+  return conSQLite(
+    async (db) => {
+      for (var j = 0; j < merma.productos.length; j++) {
+        var prod = merma.productos[j];
+        await db.execute(
+          "INSERT INTO mermas_pending (codigo_producto, nombre, cantidad, fecha_hora, synced) VALUES (?, ?, ?, ?, 0)",
+          [prod.codigo, prod.nombre, prod.cantidad, merma.fechaHora]
+        );
+      }
+      console.log("✅ Merma guardada offline (" + merma.productos.length + " productos)");
+      return true;
+    },
+    function() {
+      var actuales = leerLocal(LS_KEYS.mermas, []);
+      return guardarLocal(LS_KEYS.mermas, actuales.concat(construirLineasMerma()));
     }
-    console.log("✅ Merma guardada offline (" + merma.productos.length + " productos)");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando merma offline:", error);
-    // Fallback a localStorage
-    var actuales2 = leerLocal(LS_KEYS.mermas, []);
-    var lineas2 = [];
-    for (var k = 0; k < merma.productos.length; k++) {
-      var p = merma.productos[k];
-      lineas2.push({
-        id: Date.now() + k + Math.floor(Math.random() * 1000),
-        codigo_producto: p.codigo,
-        nombre: p.nombre,
-        cantidad: Number(p.cantidad || 0),
-        fecha_hora: merma.fechaHora,
-        synced: 0,
-      });
-    }
-    return guardarLocal(LS_KEYS.mermas, actuales2.concat(lineas2));
-  }
+  );
 }
 
 // Obtener mermas pendientes de sync
 async function getMermasPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
-      return Number(m.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM mermas_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo mermas pendientes:", error);
-    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
-      return Number(m.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM mermas_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
+        return Number(m.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // Contar mermas pendientes
 async function contarMermasPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
-      return Number(m.synced || 0) === 0;
-    }).length;
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(*) as count FROM mermas_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    console.error("❌ Error contando mermas pendientes:", error);
-    return 0;
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(*) as count FROM mermas_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    function() {
+      return leerLocal(LS_KEYS.mermas, []).filter(function(m) {
+        return Number(m.synced || 0) === 0;
+      }).length;
+    }
+  );
 }
 
 // Marcar mermas como sincronizadas
@@ -1228,82 +1176,70 @@ async function marcarMermasSynced(ids) {
 
 // Obtener entrada de productos pendientes de sync
 async function getEntradaProductosPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
-      return Number(p.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM entrada_productos_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo entrada productos pendientes:", error);
-    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
-      return Number(p.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM entrada_productos_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
+        return Number(p.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // Contar entrada de productos pendientes
 async function contarEntradaProductosPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
-      return Number(p.synced || 0) === 0;
-    }).length;
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(*) as count FROM entrada_productos_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    console.error("❌ Error contando entrada productos pendientes:", error);
-    return 0;
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(*) as count FROM entrada_productos_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    function() {
+      return leerLocal(LS_KEYS.entrada_productos, []).filter(function(p) {
+        return Number(p.synced || 0) === 0;
+      }).length;
+    }
+  );
 }
 
 // Contar abastecimientos pendientes
 async function contarAbastecerPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
-      return Number(a.synced || 0) === 0;
-    }).length;
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(*) as count FROM abastecer_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    console.error("❌ Error contando abastecimientos pendientes:", error);
-    return 0;
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(*) as count FROM abastecer_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    function() {
+      return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
+        return Number(a.synced || 0) === 0;
+      }).length;
+    }
+  );
 }
 
 // Obtener abastecimientos pendientes de sync
 async function getAbastecerPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
-      return Number(a.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM abastecer_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo abastecimientos pendientes:", error);
-    return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
-      return Number(a.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM abastecer_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.abastecer, []).filter(function(a) {
+        return Number(a.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // Marcar abastecimientos como sincronizados
@@ -1448,78 +1384,65 @@ async function guardarGastoOffline(gasto) {
   var fecha = gasto.fecha || fechaLocalISO().split("T")[0];
   var monto = Number(gasto.monto) || 0;
 
-  if (storageMode !== "sqlite" || !db) {
-    var actuales = leerLocal(LS_KEYS.gastos, []);
-    actuales.push({
+  function construirGasto() {
+    return {
       id: Date.now() + Math.floor(Math.random() * 1000),
       fecha: fecha,
       descripcion: gasto.descripcion,
       monto: monto,
       synced: 0,
-    });
-    return guardarLocal(LS_KEYS.gastos, actuales);
+    };
   }
 
-  try {
-    await db.execute(
-      "INSERT INTO gastos_pending (fecha, descripcion, monto, synced) VALUES (?, ?, ?, 0)",
-      [fecha, gasto.descripcion, monto]
-    );
-    console.log("✅ Gasto guardado offline:", gasto.descripcion, "$" + monto);
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando gasto offline:", error);
-    // Fallback a localStorage
-    var actuales2 = leerLocal(LS_KEYS.gastos, []);
-    actuales2.push({
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      fecha: fecha,
-      descripcion: gasto.descripcion,
-      monto: monto,
-      synced: 0,
-    });
-    return guardarLocal(LS_KEYS.gastos, actuales2);
-  }
+  return conSQLite(
+    async (db) => {
+      await db.execute(
+        "INSERT INTO gastos_pending (fecha, descripcion, monto, synced) VALUES (?, ?, ?, 0)",
+        [fecha, gasto.descripcion, monto]
+      );
+      console.log("✅ Gasto guardado offline:", gasto.descripcion, "$" + monto);
+      return true;
+    },
+    function() {
+      var actuales = leerLocal(LS_KEYS.gastos, []);
+      actuales.push(construirGasto());
+      return guardarLocal(LS_KEYS.gastos, actuales);
+    }
+  );
 }
 
 // Obtener gastos pendientes de sync
 async function getGastosPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
-      return Number(g.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM gastos_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo gastos pendientes:", error);
-    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
-      return Number(g.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM gastos_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
+        return Number(g.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // Contar gastos pendientes
 async function contarGastosPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
-      return Number(g.synced || 0) === 0;
-    }).length;
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(*) as count FROM gastos_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    console.error("❌ Error contando gastos pendientes:", error);
-    return 0;
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(*) as count FROM gastos_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    function() {
+      return leerLocal(LS_KEYS.gastos, []).filter(function(g) {
+        return Number(g.synced || 0) === 0;
+      }).length;
+    }
+  );
 }
 
 // Marcar gastos como sincronizados
@@ -1559,9 +1482,8 @@ async function guardarElaboracionOffline(elaboracion) {
 
   var fechaHora = fechaLocalISO();
 
-  if (storageMode !== "sqlite" || !db) {
-    var actuales = leerLocal(LS_KEYS.elaboraciones, []);
-    actuales.push({
+  function construirElaboracion() {
+    return {
       id: Date.now() + Math.floor(Math.random() * 1000),
       nombre_receta: elaboracion.nombre_receta,
       lotes: Number(elaboracion.lotes || 0),
@@ -1569,78 +1491,64 @@ async function guardarElaboracionOffline(elaboracion) {
       precio_venta: Number(elaboracion.precio_venta || 0),
       fecha_hora: fechaHora,
       synced: 0,
-    });
-    return guardarLocal(LS_KEYS.elaboraciones, actuales);
+    };
   }
 
-  try {
-    await db.execute(
-      "INSERT INTO elaboraciones_pending (nombre_receta, lotes, cantidad_producida, precio_venta, fecha_hora, synced) VALUES (?, ?, ?, ?, ?, 0)",
-      [
-        elaboracion.nombre_receta,
-        Number(elaboracion.lotes || 0),
-        Number(elaboracion.cantidad_producida || 0),
-        Number(elaboracion.precio_venta || 0),
-        fechaHora,
-      ]
-    );
-    console.log("✅ Elaboración guardada:", elaboracion.nombre_receta, "x" + elaboracion.lotes + " lote(s)");
-    return true;
-  } catch (error) {
-    console.error("❌ Error guardando elaboración:", error);
-    // Fallback a localStorage
-    var actuales2 = leerLocal(LS_KEYS.elaboraciones, []);
-    actuales2.push({
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      nombre_receta: elaboracion.nombre_receta,
-      lotes: Number(elaboracion.lotes || 0),
-      cantidad_producida: Number(elaboracion.cantidad_producida || 0),
-      precio_venta: Number(elaboracion.precio_venta || 0),
-      fecha_hora: fechaHora,
-      synced: 0,
-    });
-    return guardarLocal(LS_KEYS.elaboraciones, actuales2);
-  }
+  return conSQLite(
+    async (db) => {
+      await db.execute(
+        "INSERT INTO elaboraciones_pending (nombre_receta, lotes, cantidad_producida, precio_venta, fecha_hora, synced) VALUES (?, ?, ?, ?, ?, 0)",
+        [
+          elaboracion.nombre_receta,
+          Number(elaboracion.lotes || 0),
+          Number(elaboracion.cantidad_producida || 0),
+          Number(elaboracion.precio_venta || 0),
+          fechaHora,
+        ]
+      );
+      console.log("✅ Elaboración guardada:", elaboracion.nombre_receta, "x" + elaboracion.lotes + " lote(s)");
+      return true;
+    },
+    function() {
+      var actuales = leerLocal(LS_KEYS.elaboraciones, []);
+      actuales.push(construirElaboracion());
+      return guardarLocal(LS_KEYS.elaboraciones, actuales);
+    }
+  );
 }
 
 // Obtener elaboraciones pendientes de sync
 async function getElaboracionesPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
-      return Number(e.synced || 0) === 0;
-    });
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT * FROM elaboraciones_pending WHERE synced = 0 ORDER BY id"
-    );
-    return result.values || [];
-  } catch (error) {
-    console.error("❌ Error obteniendo elaboraciones pendientes:", error);
-    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
-      return Number(e.synced || 0) === 0;
-    });
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT * FROM elaboraciones_pending WHERE synced = 0 ORDER BY id"
+      );
+      return result.values || [];
+    },
+    function() {
+      return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
+        return Number(e.synced || 0) === 0;
+      });
+    }
+  );
 }
 
 // Contar elaboraciones pendientes
 async function contarElaboracionesPendientes() {
-  if (storageMode !== "sqlite" || !db) {
-    return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
-      return Number(e.synced || 0) === 0;
-    }).length;
-  }
-
-  try {
-    var result = await db.execute(
-      "SELECT COUNT(*) as count FROM elaboraciones_pending WHERE synced = 0"
-    );
-    return result.values ? result.values[0].count : 0;
-  } catch (error) {
-    console.error("❌ Error contando elaboraciones pendientes:", error);
-    return 0;
-  }
+  return conSQLite(
+    async (db) => {
+      var result = await db.execute(
+        "SELECT COUNT(*) as count FROM elaboraciones_pending WHERE synced = 0"
+      );
+      return result.values ? result.values[0].count : 0;
+    },
+    function() {
+      return leerLocal(LS_KEYS.elaboraciones, []).filter(function(e) {
+        return Number(e.synced || 0) === 0;
+      }).length;
+    }
+  );
 }
 
 // Marcar elaboraciones como sincronizadas

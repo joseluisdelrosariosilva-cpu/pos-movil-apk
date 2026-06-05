@@ -158,36 +158,6 @@ body {
   line-height: 1;
 }
 
-#syncIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-#syncCount {
-  position: absolute;
-  top: -7px;
-  right: -7px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--error);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-}
-
-#syncCount:empty {
-  display: none;
-}
-
 /* ===== PANEL ESTADO OFFLINE ===== */
 .estado-offline {
   display: grid;
@@ -1463,14 +1433,14 @@ body {
 .historial-tabla th {
   text-align: left;
   padding: 6px 8px;
-  border-bottom: 2px solid #ddd;
+  border-bottom: 2px solid var(--bg-input);
   font-weight: bold;
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
 .historial-tabla td {
   padding: 6px 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--bg-input);
 }
 
 .text-center {
@@ -1485,7 +1455,7 @@ body {
   display: flex;
   justify-content: space-between;
   padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-weight: bold;
   font-size: 14px;
 }

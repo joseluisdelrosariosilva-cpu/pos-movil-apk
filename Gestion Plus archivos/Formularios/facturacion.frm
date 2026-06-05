@@ -13,14 +13,13 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
-
 Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: facturacion
-' PROP√ìSITO:  Interfaz de ventas con b√∫squeda de productos, carrito,
+' PROP”SITO:  Interfaz de ventas con b˙squeda de productos, carrito,
 '              procesamiento de pago (efectivo/transferencia). Toda la
-'              l√≥gica de negocio delega en m√≥dulos reorganizados.
+'              lÛgica de negocio delega en mÛdulos reorganizados.
 ' ============================================================================
 
 ' --- AGREGAR PRODUCTO AL CARRITO --------------------------------------------
@@ -29,29 +28,29 @@ Private Sub boton_add_covered_Click()
     
     ' Validar campos obligatorios
     If Me.codigo_facturacion_TextBox.Value = "" Then
-        MsgBox "A√±ada alg√∫n producto desde la lista de b√∫squeda para continuar", vbExclamation
+        MsgBox "AÒada alg˙n producto desde la lista de b˙squeda para continuar", vbExclamation
         Exit Sub
     ElseIf Me.cantidad_facturacion_TextBox.Value = "" Then
         MsgBox "Indique la cantidad de unidades que desea agregar", vbExclamation
         Exit Sub
     ElseIf Me.Disponibilidad_facturacio_TextBox.Value <= 0 Then
-        MsgBox "No hay disponibilidad en almac√©n", vbCritical
+        MsgBox "No hay disponibilidad en almacÈn", vbCritical
         Exit Sub
     ElseIf CDbl(Me.cantidad_facturacion_TextBox.Value) <= 0 Then
-        MsgBox "Debe a√±adir una cantidad superior a 0", vbExclamation
+        MsgBox "Debe aÒadir una cantidad superior a 0", vbExclamation
         Exit Sub
     End If
     
-    ' Validar repetici√≥n
+    ' Validar repeticiÛn
     If modBusquedas.ComprobarRepeticionFacturacion( _
         Me.codigo_facturacion_TextBox.Value, Me.productos_facturacion_ListBox) Then
-        MsgBox "No puede a√±adir un producto a√±adido anteriormente.", vbExclamation
+        MsgBox "No puede aÒadir un producto aÒadido anteriormente.", vbExclamation
         Exit Sub
     End If
     
     ' Validar cantidad vs disponibilidad
     If CDbl(Me.cantidad_facturacion_TextBox.Value) > CDbl(Me.Disponibilidad_facturacio_TextBox.Value) Then
-        MsgBox "La disponibilidad en almac√©n es: " & Me.Disponibilidad_facturacio_TextBox.Value, vbExclamation
+        MsgBox "La disponibilidad en almacÈn es: " & Me.Disponibilidad_facturacio_TextBox.Value, vbExclamation
         Me.cantidad_facturacion_TextBox.Value = Me.Disponibilidad_facturacio_TextBox.Value
         Me.SpinButton1.Value = CDbl(Me.Disponibilidad_facturacio_TextBox.Value)
         Exit Sub
@@ -62,14 +61,14 @@ Private Sub boton_add_covered_Click()
     With Me.productos_facturacion_ListBox
         .List(.ListCount - 1, 0) = Me.codigo_facturacion_TextBox.Value
         .List(.ListCount - 1, 1) = Me.nombre_de_producto_facturacionTextBox.Value
-        .List(.ListCount - 1, 2) = Me.Precio_facturaci√≥n_TextBox.Value
+        .List(.ListCount - 1, 2) = Me.Precio_facturaciÛn_TextBox.Value
         .List(.ListCount - 1, 3) = Me.cantidad_facturacion_TextBox.Value
     End With
     
     ' Limpiar campos y recalcular
     Me.codigo_facturacion_TextBox.Value = ""
     Me.nombre_de_producto_facturacionTextBox.Value = ""
-    Me.Precio_facturaci√≥n_TextBox.Value = ""
+    Me.Precio_facturaciÛn_TextBox.Value = ""
     Me.Disponibilidad_facturacio_TextBox.Value = ""
     Me.cantidad_facturacion_TextBox.Value = ""
     
@@ -80,10 +79,10 @@ End Sub
 ' --- ELIMINAR PRODUCTO DEL CARRITO ------------------------------------------
 Private Sub boton_delete_covered_Click()
     If Me.productos_facturacion_ListBox.ListIndex = -1 Then
-        MsgBox "Seleccione el producto que desea quitar de la facturaci√≥n", vbExclamation
+        MsgBox "Seleccione el producto que desea quitar de la facturaciÛn", vbExclamation
     Else
         Dim respuesta
-        respuesta = MsgBox("¬øEst√° seguro que desea quitar el producto seleccionado?", _
+        respuesta = MsgBox("øEst· seguro que desea quitar el producto seleccionado?", _
                            vbYesNo, "Eliminar producto")
         If respuesta = 6 Then
             Me.productos_facturacion_ListBox.RemoveItem (Me.productos_facturacion_ListBox.ListIndex)
@@ -113,7 +112,7 @@ End Sub
 ' --- PROCESAR PAGO (pasar a pantalla de pago) --------------------------------
 Private Sub boton_procesar_pago_covered_Click()
     If Me.productos_facturacion_ListBox.ListCount = 0 Then
-        MsgBox "A√±ada productos a la factura para continuar", vbExclamation
+        MsgBox "AÒada productos a la factura para continuar", vbExclamation
         Exit Sub
     End If
     
@@ -123,15 +122,15 @@ Private Sub boton_procesar_pago_covered_Click()
     Me.total_a_pagar_TextBox.Value = modFormateo.FormatearNumero(total_fact)
     Me.restan_por_pagar_TextBox.Value = modFormateo.FormatearNumero(-1 * total_fact)
     
-    ' Deshabilitar controles de selecci√≥n de productos
+    ' Deshabilitar controles de selecciÛn de productos
     Me.factura_id_TextBox.Enabled = False
     Me.fecha_de_orden_TextBox.Enabled = False
-    Me.boton_calendario_reposo.Visible = False
+    Me.boton_calendario_reposo.visible = False
     Me.nombre_producto_busqueda_TextBox.Enabled = False
     Me.productos_busqueda_ListBox.Enabled = False
     Me.codigo_facturacion_TextBox.Enabled = False
     Me.nombre_de_producto_facturacionTextBox.Enabled = False
-    Me.Precio_facturaci√≥n_TextBox.Enabled = False
+    Me.Precio_facturaciÛn_TextBox.Enabled = False
     Me.Disponibilidad_facturacio_TextBox.Enabled = False
     Me.cantidad_facturacion_TextBox.Enabled = False
     Me.SpinButton1.Enabled = False
@@ -202,7 +201,7 @@ End Sub
 
 ' --- REINICIO DE POS (volver a estado inicial tras venta exitosa) ------------
 Private Sub reinicio_POS()
-    MsgBox "Venta realizada con √©xito", vbInformation, "Orden de venta"
+    MsgBox "Venta realizada con Èxito", vbInformation, "Orden de venta"
     
     Me.MultiPage1.Value = 0
     Me.productos_facturacion_ListBox.Clear
@@ -211,20 +210,24 @@ Private Sub reinicio_POS()
     Me.restan_por_pagar_TextBox.Value = ""
     Me.devolucion_TextBox.Value = ""
     Me.ingreso_cliente_pago_TextBox.Value = ""
+    Me.transferencia_recibida_CheckBox.Value = False
     Me.cantidad_a_pagar_transeferencia_TextBox.Value = ""
     Me.efectivo_CheckBox.Value = False
     Me.transferecia_CheckBox.Value = False
     Me.devoluacion_efectuada_CheckBox.Value = False
     Me.fecha_de_orden_TextBox.Value = Format(Date, "d-mmm-yyyy")
+    Me.transferencia_recibida_CheckBox.Enabled = True
+    Me.devoluacion_efectuada_CheckBox.Enabled = True
+    Me.cantidad_a_pagar_transeferencia_TextBox.Enabled = True
     
-    ' Re-habilitar controles de selecci√≥n de productos
+    ' Re-habilitar controles de selecciÛn de productos
     Me.factura_id_TextBox.Enabled = True
     Me.fecha_de_orden_TextBox.Enabled = True
     Me.nombre_producto_busqueda_TextBox.Enabled = True
     Me.productos_busqueda_ListBox.Enabled = True
     Me.codigo_facturacion_TextBox.Enabled = True
     Me.nombre_de_producto_facturacionTextBox.Enabled = True
-    Me.Precio_facturaci√≥n_TextBox.Enabled = True
+    Me.Precio_facturaciÛn_TextBox.Enabled = True
     Me.Disponibilidad_facturacio_TextBox.Enabled = True
     Me.cantidad_facturacion_TextBox.Enabled = True
     Me.SpinButton1.Enabled = True
@@ -237,26 +240,26 @@ Private Sub reinicio_POS()
     Me.transferecia_CheckBox.Enabled = False
     Me.efectivo_CheckBox.Enabled = False
     Me.ingreso_cliente_pago_TextBox.Enabled = True
-    Me.boton_calendario_reposo.Visible = True
+    Me.boton_calendario_reposo.visible = True
     
-    ' Recargar lista de productos (por si cambi√≥ disponibilidad)
+    ' Recargar lista de productos (por si cambiÛ disponibilidad)
     Call modBusquedas.CargarTodosLosProductos(Me.productos_busqueda_ListBox)
     Call modFacturacion.GenerarIdFactura( _
         Me.fecha_de_orden_TextBox, Me.factura_id_TextBox)
 End Sub
 
-' --- BOT√ìN ATR√ÅS (volver a selecci√≥n de productos) ---------------------------
+' --- BOT”N ATR¡S (volver a selecciÛn de productos) ---------------------------
 Private Sub boton_atras_covered_Click()
     Me.MultiPage1.Value = 0
     
-    ' Re-habilitar controles de selecci√≥n
+    ' Re-habilitar controles de selecciÛn
     Me.factura_id_TextBox.Enabled = True
     Me.fecha_de_orden_TextBox.Enabled = True
     Me.nombre_producto_busqueda_TextBox.Enabled = True
     Me.productos_busqueda_ListBox.Enabled = True
     Me.codigo_facturacion_TextBox.Enabled = True
     Me.nombre_de_producto_facturacionTextBox.Enabled = True
-    Me.Precio_facturaci√≥n_TextBox.Enabled = True
+    Me.Precio_facturaciÛn_TextBox.Enabled = True
     Me.Disponibilidad_facturacio_TextBox.Enabled = True
     Me.cantidad_facturacion_TextBox.Enabled = True
     Me.SpinButton1.Enabled = True
@@ -280,7 +283,7 @@ Private Sub boton_atras_covered_Click()
     Me.transferencia_recibida_CheckBox.Enabled = True
     Me.transferencia_recibida_CheckBox.Value = False
     Me.cantidad_a_pagar_transeferencia_TextBox.Enabled = True
-    Me.boton_calendario_reposo.Visible = True
+    Me.boton_calendario_reposo.visible = True
 End Sub
 
 ' --- BUSCAR PRODUCTOS (filtro en tiempo real) --------------------------------
@@ -290,14 +293,14 @@ Private Sub nombre_producto_busqueda_TextBox_Change()
         Me.productos_busqueda_ListBox)
 End Sub
 
-' --- SELECCIONAR PRODUCTO DE LA B√öSQUEDA (doble click) -----------------------
+' --- SELECCIONAR PRODUCTO DE LA B⁄SQUEDA (doble click) -----------------------
 Private Sub productos_busqueda_ListBox_DblClick(ByVal Cancel As MSForms.ReturnBoolean)
     On Error Resume Next
     With Me.productos_busqueda_ListBox
         Me.codigo_facturacion_TextBox.Value = .List(.ListIndex, 0)
         Me.nombre_de_producto_facturacionTextBox.Value = .List(.ListIndex, 1)
         Me.Disponibilidad_facturacio_TextBox.Value = .List(.ListIndex, 2)
-        Me.Precio_facturaci√≥n_TextBox.Value = .List(.ListIndex, 3)
+        Me.Precio_facturaciÛn_TextBox.Value = .List(.ListIndex, 3)
     End With
 End Sub
 
@@ -306,11 +309,11 @@ Private Sub efectivo_CheckBox_Click()
     Dim visible As Boolean
     visible = CBool(Me.efectivo_CheckBox.Value)
     
-    Me.ingreso_cliente_pago_TextBox.Visible = visible
-    Me.devolucion_TextBox.Visible = visible
-    Me.devoluacion_efectuada_CheckBox.Visible = visible
-    Me.Label11.Visible = visible
-    Me.Label12.Visible = visible
+    Me.ingreso_cliente_pago_TextBox.visible = visible
+    Me.devolucion_TextBox.visible = visible
+    Me.devoluacion_efectuada_CheckBox.visible = visible
+    Me.Label11.visible = visible
+    Me.Label12.visible = visible
 End Sub
 
 ' --- EVENTOS DE PAGO: TRANSFERENCIA ------------------------------------------
@@ -318,12 +321,12 @@ Private Sub transferecia_CheckBox_Click()
     Dim visible As Boolean
     visible = CBool(Me.transferecia_CheckBox.Value)
     
-    Me.Label24.Visible = visible
-    Me.cantidad_a_pagar_transeferencia_TextBox.Visible = visible
-    Me.transferencia_recibida_CheckBox.Visible = visible
+    Me.Label24.visible = visible
+    Me.cantidad_a_pagar_transeferencia_TextBox.visible = visible
+    Me.transferencia_recibida_CheckBox.visible = visible
 End Sub
 
-' --- C√ÅLCULO DE DEVOLUCI√ìN E INGRESO DEL CLIENTE -----------------------------
+' --- C¡LCULO DE DEVOLUCI”N E INGRESO DEL CLIENTE -----------------------------
 Private Sub ingreso_cliente_pago_TextBox_Change()
     Dim devolucionCalc As Double
     
@@ -342,7 +345,7 @@ Private Sub ingreso_cliente_pago_TextBox_Change()
     End If
 End Sub
 
-' --- CONFIRMAR DEVOLUCI√ìN EFECTUADA ------------------------------------------
+' --- CONFIRMAR DEVOLUCI”N EFECTUADA ------------------------------------------
 Private Sub devoluacion_efectuada_CheckBox_Click()
     If Me.devoluacion_efectuada_CheckBox.Value = True And Me.devolucion_TextBox <> "" Then
         Me.restan_por_pagar_TextBox.Value = modFormateo.FormatearNumero( _
@@ -351,7 +354,7 @@ Private Sub devoluacion_efectuada_CheckBox_Click()
         Me.transferecia_CheckBox.Value = False
         Me.transferecia_CheckBox.Enabled = False
     ElseIf Me.devoluacion_efectuada_CheckBox.Value = True And Me.devolucion_TextBox = "" Then
-        MsgBox "No se ha ingresado suficiente dinero para ejecutar una devoluci√≥n", vbCritical
+        MsgBox "No se ha ingresado suficiente dinero para ejecutar una devoluciÛn", vbCritical
         Me.devoluacion_efectuada_CheckBox.Value = False
     End If
 End Sub
@@ -383,7 +386,7 @@ Private Sub transferencia_recibida_CheckBox_Click()
     End If
 End Sub
 
-' --- RESTA POR PAGAR: estilo visual y c√°lculo de transferencia ---------------
+' --- RESTA POR PAGAR: estilo visual y c·lculo de transferencia ---------------
 Private Sub restan_por_pagar_TextBox_Change()
     If IsNumeric(Me.restan_por_pagar_TextBox.Value) Then
         If CDbl(Me.restan_por_pagar_TextBox.Value) >= 0 Then
@@ -420,7 +423,7 @@ Private Sub boton_calendario_covered_Click()
     frmCalendario.Show
 End Sub
 
-' --- BOT√ìN ADMIN -------------------------------------------------------------
+' --- BOT”N ADMIN -------------------------------------------------------------
 Private Sub boton_admin_covered_Click()
     Login.Show
 End Sub
@@ -431,7 +434,7 @@ Private Sub fecha_de_orden_TextBox_Change()
         Me.fecha_de_orden_TextBox, Me.factura_id_TextBox)
 End Sub
 
-' --- INICIALIZACI√ìN DEL FORMULARIO -------------------------------------------
+' --- INICIALIZACI”N DEL FORMULARIO -------------------------------------------
 Private Sub UserForm_Initialize()
     ' Cargar lista de productos
     With Me.productos_busqueda_ListBox
@@ -454,21 +457,21 @@ Private Sub UserForm_Activate()
     Me.MultiPage1.Value = 0
     Me.fecha_de_orden_TextBox.Value = Format(Date, "d-mmm-yyyy")
     
-    If Application.Visible = True Then
-        Me.boton_admin_reposo.Visible = False
+    If Application.visible = True Then
+        Me.boton_admin_reposo.visible = False
     Else
-        Me.boton_admin_reposo.Visible = True
+        Me.boton_admin_reposo.visible = True
     End If
 End Sub
 
 Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
-    If CloseMode = vbFormControlMenu And Me.boton_admin_reposo.Visible = True Then
+    If CloseMode = vbFormControlMenu And Me.boton_admin_reposo.visible = True Then
         ThisWorkbook.Save
         Application.Quit
     End If
 End Sub
 
-' --- VALIDACI√ìN NUM√âRICA (KeyPress) ------------------------------------------
+' --- VALIDACI”N NUM…RICA (KeyPress) ------------------------------------------
 Private Sub cantidad_facturacion_TextBox_KeyPress(ByVal KeyAscii As MSForms.ReturnInteger)
     Call modValidacionNumerica.SoloNumeros(KeyAscii)
 End Sub
@@ -478,37 +481,37 @@ End Sub
 
 ' --- EVENTOS MOUSE MOVE (manejo de ZOrder de botones) ------------------------
 Private Sub boton_add_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_add_covered.Visible = True
+    Me.boton_add_covered.visible = True
     Me.boton_add_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_admin_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_admin_covered.Visible = True
+    Me.boton_admin_covered.visible = True
     Me.boton_admin_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_atras_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_atras_covered.Visible = True
+    Me.boton_atras_covered.visible = True
     Me.boton_atras_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_calendario_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_calendario_covered.Visible = True
+    Me.boton_calendario_covered.visible = True
     Me.boton_calendario_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_delete_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_delete_covered.Visible = True
+    Me.boton_delete_covered.visible = True
     Me.boton_delete_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_edit_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_edit_covered.Visible = True
+    Me.boton_edit_covered.visible = True
     Me.boton_edit_covered.ZOrder msoBringToFront
 End Sub
 
 Private Sub boton_procesar_pago_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_procesar_pago_covered.Visible = True
+    Me.boton_procesar_pago_covered.visible = True
     Me.boton_procesar_pago_covered.ZOrder msoBringToFront
 End Sub
 
@@ -522,42 +525,43 @@ Private Sub Label26_Click()
 End Sub
 
 Private Sub MultiPage1_MouseMove(ByVal Index As Long, ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_add_covered.Visible = False
+    Me.boton_add_covered.visible = False
     Me.boton_add_reposo.ZOrder msoBringToFront
-    Me.boton_edit_covered.Visible = False
+    Me.boton_edit_covered.visible = False
     Me.boton_edit_reposo.ZOrder msoBringToFront
-    Me.boton_delete_covered.Visible = False
+    Me.boton_delete_covered.visible = False
     Me.boton_delete_reposo.ZOrder msoBringToFront
-    Me.boton_procesar_pago_covered.Visible = False
+    Me.boton_procesar_pago_covered.visible = False
     Me.boton_procesar_pago_reposo.ZOrder msoBringToFront
-    Me.boton_atras_covered.Visible = False
+    Me.boton_atras_covered.visible = False
     Me.boton_atras_reposo.ZOrder msoBringToFront
     Me.boton_registrar_ventas_reposo.ZOrder msoBringToFront
     Me.Label26.ZOrder msoBringToFront
 End Sub
 
 Private Sub productos_facturacion_ListBox_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_add_covered.Visible = False
+    Me.boton_add_covered.visible = False
     Me.boton_add_reposo.ZOrder msoBringToFront
-    Me.boton_edit_covered.Visible = False
+    Me.boton_edit_covered.visible = False
     Me.boton_edit_reposo.ZOrder msoBringToFront
-    Me.boton_delete_covered.Visible = False
+    Me.boton_delete_covered.visible = False
     Me.boton_delete_reposo.ZOrder msoBringToFront
 End Sub
 
 Private Sub total_facturacion_TextBox_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_procesar_pago_covered.Visible = False
+    Me.boton_procesar_pago_covered.visible = False
     Me.boton_procesar_pago_reposo.ZOrder msoBringToFront
 End Sub
 
 Private Sub UserForm_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
     Me.boton_admin_reposo.ZOrder msoBringToFront
-    Me.boton_admin_covered.Visible = False
+    Me.boton_admin_covered.visible = False
     Me.boton_calendario_reposo.ZOrder msoBringToFront
-    Me.boton_calendario_covered.Visible = False
+    Me.boton_calendario_covered.visible = False
 End Sub
 
 Private Sub fecha_de_orden_TextBox_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
     Me.boton_calendario_reposo.ZOrder msoBringToFront
-    Me.boton_calendario_covered.Visible = False
+    Me.boton_calendario_covered.visible = False
 End Sub
+

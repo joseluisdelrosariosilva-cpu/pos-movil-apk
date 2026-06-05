@@ -70,8 +70,8 @@ app.use("/api", validarToken, ventasRoutes);
 app.use("/api", validarToken, resumenRoutes);
 app.use("/api", validarToken, syncCompletoRoutes);
 
-// Ruta de prueba
-app.get("/api/test", validarToken, (req, res) => {
+// Ruta de prueba (pública, validarToken la salta via RUTAS_PUBLICAS)
+app.get("/api/test", (req, res) => {
   res.json({
     mensaje: "✅ Servidor funcionando correctamente (ES Modules)",
     hora: new Date().toLocaleString(),

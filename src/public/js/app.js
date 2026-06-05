@@ -259,14 +259,10 @@ async function cargarProductos(desdeLocal) {
     console.log("📡 URL:", fetchUrl);
     mostrarMensaje("Cargando...", "info");
   
-    var timeoutId = setTimeout(function() { 
-      console.log("⏱️ Timeout");
-    }, 8000);
-  
     try {
       console.log("📡 Usando fetch nativo...");
       var controller = new AbortController();
-      timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+      var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
       
       var response = await fetch(fetchUrl, {
         method: "GET",
@@ -1867,6 +1863,7 @@ document.addEventListener("keydown", (e) => {
 // ============================================
 // 10. FILTRO DE BÚSQUEDA
 // ============================================
+let ultimoTermino = "";
 function reapplySearchFilter() {
   const termino = searchInput.value.toLowerCase().trim();
   if (termino) {
@@ -1896,7 +1893,6 @@ if (searchClear) {
 const FILTRO_DEBOUNCE_MS = 140;
 let filtroTimer = null;
 let filtroRaf = 0;
-let ultimoTermino = "";
 
 function aplicarFiltro(termino) {
   if (termino === ultimoTermino) return;
@@ -2646,12 +2642,8 @@ window.sincronizar = async function() {
 
   // 2. Ejecutar sync
   var urlServidor = window.SERVER_URL;
-  var btnSync = document.getElementById("btnSync");
-  var syncIcon = document.getElementById("syncIcon");
 
   try {
-    if (btnSync) btnSync.disabled = true;
-    if (syncIcon) syncIcon.textContent = "⏳";
     mostrarMensaje("Sincronizando...", "info");
 
     var resultado = await DB.sincronizarCompleto(urlServidor);
@@ -2709,10 +2701,6 @@ window.sincronizar = async function() {
     await cargarIngredientes();
     await actualizarIndicadorSync();
     await actualizarPanelEstado();
-
-    if (btnSync) btnSync.disabled = false;
-    if (syncIcon) syncIcon.textContent = "🔄";
-    logSyncAPK("Botón de sincronizar reactivado");
   }
 };
 

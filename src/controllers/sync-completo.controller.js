@@ -19,6 +19,19 @@ import { fechaLocalISO } from "../utils/date.util.js";
 // Helpers internos
 // ============================================
 
+/**
+ * Devuelve el prefijo de 5 dígitos para la fecha actual
+ * (serial Excel = días desde 1900-01-01, con el bug del año bisiesto de Excel)
+ * Ejemplo: 4 de junio de 2026 → "45679"
+ * Coincide con el cálculo en VBA (CLng(Date)) y en el cliente (generarFacturaId)
+ */
+const obtenerPrefijoHoy = () => {
+  const ahora = new Date();
+  const fechaBase = new Date(1900, 0, 1);
+  const diffDias = Math.floor((ahora - fechaBase) / (1000 * 60 * 60 * 24));
+  return String(diffDias + 2).padStart(5, "0");
+};
+
 /** Encuentra la primera fila vacía en una hoja (después de encabezados) */
 const primeraFilaVacia = (hoja, col = "A") => {
   let fila = 2;
@@ -60,10 +73,12 @@ const escanearProductosExistentes = (hojaProductos) => {
  * Escanea la hoja Pendientes y devuelve:
  *   - Set con todas las facturas existentes (para detección rápida)
  *   - maxNum: el valor numérico más alto (global, sin importar prefijo)
+ *   - maxPorPrefijo: { prefijo: maxSufijo } para detectar IDs inferiores al max por día
  */
 const escanearFacturasExistentes = (hojaPendientes) => {
   const facturas = new Set();
   let maxNum = 0;
+  const maxPorPrefijo = {};
   let fila = 2;
 
   while (true) {
@@ -76,10 +91,19 @@ const escanearFacturasExistentes = (hojaPendientes) => {
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > maxNum) maxNum = num;
 
+    // Acumular sufijo más alto por prefijo (primeros 5 dígitos = fecha serial)
+    if (str.length >= 10) {
+      const prefijo = str.substring(0, 5);
+      const sufijo = parseInt(str.substring(5, 10), 10);
+      if (!isNaN(sufijo)) {
+        maxPorPrefijo[prefijo] = Math.max(maxPorPrefijo[prefijo] || 0, sufijo);
+      }
+    }
+
     fila++;
   }
 
-  return { facturas, maxNum };
+  return { facturas, maxNum, maxPorPrefijo };
 };
 
 /**
@@ -149,19 +173,31 @@ export const sincronizarCompleto = async (req, res) => {
         const { workbook } = await abrirExcel();
         const hojaPendientes = workbook.sheet("Pendientes");
         if (hojaPendientes) {
-          const { maxNum } = (() => {
-            let maxNum = 0;
+          const { maxPorPrefijo } = (() => {
+            const maxPorPrefijo = {};
             let fila = 2;
             while (true) {
               const val = hojaPendientes.cell(`A${fila}`).value();
               if (!val) break;
-              const num = parseInt(val.toString().trim(), 10);
-              if (!isNaN(num) && num > maxNum) maxNum = num;
+              const str = val.toString().trim();
+              if (str.length >= 10) {
+                const prefijo = str.substring(0, 5);
+                const sufijo = parseInt(str.substring(5, 10), 10);
+                if (!isNaN(sufijo)) {
+                  maxPorPrefijo[prefijo] = Math.max(maxPorPrefijo[prefijo] || 0, sufijo);
+                }
+              }
               fila++;
             }
-            return { maxNum };
+            return { maxPorPrefijo };
           })();
-          ultimaFactura = maxNum > 0 ? String(maxNum).padStart(10, "0") : null;
+          const prefijoHoy = obtenerPrefijoHoy();
+          const maxSufijoHoy = maxPorPrefijo[prefijoHoy];
+          if (maxSufijoHoy !== undefined) {
+            ultimaFactura = prefijoHoy + String(maxSufijoHoy).padStart(5, "0");
+          }
+          // Si no hay facturas hoy, ultimaFactura se queda null
+          // para que el cliente NO sobreescriba su referencia actual
         }
       } catch (_) {
         // Si falla al abrir Excel, devolvemos sin ultimaFactura
@@ -283,8 +319,8 @@ export const sincronizarCompleto = async (req, res) => {
       // PASO 3: VENTAS
       // ════════════════════════════════════════
       if (ventas && ventas.length) {
-        const { facturas: facturasExistentes, maxNum: maxFacturaNum } = escanearFacturasExistentes(hojaPendientes);
-        let proxFactura = maxFacturaNum + 1;
+        const { maxPorPrefijo } = escanearFacturasExistentes(hojaPendientes);
+        const idsUsadosBatch = new Set(); // IDs finales usados en este batch para evitar colisiones intra-batch
 
         for (const venta of ventas) {
           const facturaOriginal = venta.facturaId?.toString().trim();
@@ -293,20 +329,43 @@ export const sincronizarCompleto = async (req, res) => {
           // Traducir producto si fue remapeado
           const codProducto = remapCodigos[venta.codigoProducto?.toString().trim()] || venta.codigoProducto;
 
-          // ¿Conflicto de factura ID?
+          // Determinar si el ID de factura necesita remapeo
           let facturaFinal = facturaOriginal;
           if (remapFacturas[facturaOriginal]) {
             // Ya remapeamos esta factura antes en el batch
             facturaFinal = remapFacturas[facturaOriginal];
-          } else if (facturasExistentes.has(facturaOriginal)) {
-            // Primera vez que vemos esta factura y ya existe en Excel
-            facturaFinal = String(proxFactura).padStart(10, "0");
-            proxFactura++;
-            remapFacturas[facturaOriginal] = facturaFinal;
-            // Agregar al Set para detectar conflictos intra-batch
-            facturasExistentes.add(facturaFinal);
-            console.log(`   ↪ Factura remapeada: ${facturaOriginal} → ${facturaFinal}`);
+          } else {
+            const prefijo = facturaOriginal.length >= 10 ? facturaOriginal.substring(0, 5) : null;
+            const sufijo = facturaOriginal.length >= 10 ? parseInt(facturaOriginal.substring(5, 10), 10) : NaN;
+
+            if (prefijo && !isNaN(sufijo)) {
+              const maxSufijo = maxPorPrefijo[prefijo] || 0;
+
+              // Remapear si el sufijo es IGUAL O INFERIOR al máximo del prefijo
+              // (cubre duplicados exactos e IDs viejos inferiores al max)
+              if (sufijo <= maxSufijo) {
+                const nuevoSufijo = maxSufijo + 1;
+                facturaFinal = prefijo + String(nuevoSufijo).padStart(5, "0");
+                maxPorPrefijo[prefijo] = nuevoSufijo;
+                remapFacturas[facturaOriginal] = facturaFinal;
+                console.log(`   ↪ Factura remapeada: ${facturaOriginal} → ${facturaFinal}`);
+              }
+            }
           }
+
+          // Colisión intra-batch: si facturaFinal ya fue usado (por remapeo de otra venta
+          // o porque una venta sin remapear coincide con un remapeo anterior), lo empujamos
+          while (idsUsadosBatch.has(facturaFinal)) {
+            const p = facturaFinal.substring(0, 5);
+            const s = parseInt(facturaFinal.substring(5, 10), 10);
+            const nuevoSufijo = (maxPorPrefijo[p] || 0) + 1;
+            facturaFinal = p + String(nuevoSufijo).padStart(5, "0");
+            maxPorPrefijo[p] = nuevoSufijo;
+            if (facturaOriginal !== facturaFinal) {
+              remapFacturas[facturaOriginal] = facturaFinal;
+            }
+          }
+          idsUsadosBatch.add(facturaFinal);
 
           // Escribir línea en Pendientes
           escribirLineaVenta(hojaPendientes, {
@@ -409,11 +468,16 @@ export const sincronizarCompleto = async (req, res) => {
       // ════════════════════════════════════════
       await guardarExcel(workbook);
 
-      // Obtener la última factura de Pendientes para que el cliente
-      // actualice su referencia y no genere IDs duplicados offline
-      const { maxNum: maxFacturaNum } = escanearFacturasExistentes(hojaPendientes);
-      const ultimaFactura = maxFacturaNum > 0
-        ? String(maxFacturaNum).padStart(10, "0")
+      // Obtener la última factura de HOY para que el cliente
+      // actualice su referencia y no genere IDs duplicados offline.
+      // Solo devolvemos facturas del día actual — si no hay ninguna hoy,
+      // devolvemos null para que el cliente no sobreescriba su referencia
+      // con un prefijo de otro día (lo que generaría IDs con prefijo incorrecto).
+      const { maxPorPrefijo: maxPorPrefijoFinal } = escanearFacturasExistentes(hojaPendientes);
+      const prefijoHoy = obtenerPrefijoHoy();
+      const maxSufijoHoy = maxPorPrefijoFinal[prefijoHoy];
+      const ultimaFactura = maxSufijoHoy !== undefined
+        ? prefijoHoy + String(maxSufijoHoy).padStart(5, "0")
         : null;
 
       return {
