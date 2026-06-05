@@ -504,13 +504,6 @@ async function initDatabase() {
 }
 
 // ============================================
-// VERIFICAR SI HAY CONEXIÓN
-// ============================================
-function isOnline() {
-  return navigator.onLine;
-}
-
-// ============================================
 // OBTENER ÚLTIMO CÓDIGO DE PRODUCTO
 // ============================================
 async function getUltimoCodigoProducto() {
@@ -835,71 +828,6 @@ async function guardarVentaOffline(venta) {
       var actuales = leerLocal(LS_KEYS.ventas, []);
       var lineas = construirLineasVenta(venta, 0);
       return guardarLocal(LS_KEYS.ventas, actuales.concat(lineas));
-    }
-  );
-}
-
-// ============================================
-// GUARDAR VENTA ONLINE EN HISTÓRICO LOCAL
-// (para que el resumen del teléfono incluya online + offline)
-// ============================================
-async function guardarVentaOnlineLocal(venta, facturaIdServidor) {
-  if (!venta || !Array.isArray(venta.productos) || venta.productos.length === 0) {
-    return false;
-  }
-
-  var lineasVenta = construirLineasVenta(venta, 1, facturaIdServidor);
-
-  return conSQLite(
-    async (db) => {
-      for (var i = 0; i < lineasVenta.length; i++) {
-        var l = lineasVenta[i];
-        try {
-          await db.execute(
-            "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectivo, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-            [
-              l.factura_id,
-              l.fecha_hora,
-              l.codigo_producto,
-              l.nombre,
-              l.cantidad,
-              l.precio,
-              l.subtotal,
-              l.efectivo,
-              l.transferencia,
-            ]
-          );
-        } catch (insertError) {
-          if (
-            insertError &&
-            insertError.message &&
-            insertError.message.indexOf("efectivo") !== -1
-          ) {
-            await db.execute(
-              "INSERT INTO ventas_pending (factura_id, fecha_hora, codigo_producto, nombre, cantidad, precio, subtotal, efectividad, transferencia, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-              [
-                l.factura_id,
-                l.fecha_hora,
-                l.codigo_producto,
-                l.nombre,
-                l.cantidad,
-                l.precio,
-                l.subtotal,
-                l.efectivo,
-                l.transferencia,
-              ]
-            );
-          } else {
-            throw insertError;
-          }
-        }
-      }
-
-      return true;
-    },
-    function() {
-      var actuales = leerLocal(LS_KEYS.ventas, []);
-      return guardarLocal(LS_KEYS.ventas, actuales.concat(lineasVenta));
     }
   );
 }
@@ -1933,14 +1861,6 @@ async function agregarServidorConocido(url, tipo) {
   console.log("✅ [agregarServidorConocido] Guardado (" + tipo + "):", url);
 }
 
-/**
- * Limpia toda la lista de servidores conocidos.
- */
-async function limpiarServidoresConocidos() {
-  await _escribirListaServidores([]);
-  console.log("🗑️ [limpiarServidoresConocidos] Lista eliminada");
-}
-
 // ============================================
 // PROBAR UN SERVIDOR (health check rápido)
 // ============================================
@@ -2600,11 +2520,9 @@ async function limpiarActivacion() {
 window.Database = {
   initDatabase: initDatabase,
   getStorageMode: function() { return storageMode; },
-  isOnline: isOnline,
   getProductosLocal: getProductosLocal,
   syncProductosLocal: syncProductosLocal,
   guardarVentaOffline: guardarVentaOffline,
-  guardarVentaOnlineLocal: guardarVentaOnlineLocal,
   getVentasPendientes: getVentasPendientes,
   contarVentasPendientes: contarVentasPendientes,
   // Funciones para mermas
@@ -2615,7 +2533,6 @@ window.Database = {
   limpiarVentasAntiguas: limpiarVentasAntiguas,
   obtenerListaServidores: obtenerListaServidores,
   agregarServidorConocido: agregarServidorConocido,
-  limpiarServidoresConocidos: limpiarServidoresConocidos,
   descubrirServidor: descubrirServidor,
   // Funciones para nuevo producto
   getUltimoCodigoProducto: getUltimoCodigoProducto,

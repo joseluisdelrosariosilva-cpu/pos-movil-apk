@@ -316,77 +316,7 @@ export const escribirLineaVenta = (hoja, datosVenta) => {
 };
 
 // ============================================
-// 5. VALIDAR QUE EL EXCEL EXISTE (útil al inicio)
-// ============================================
-export const validarExcelExiste = () => {
-  const existe = fs.existsSync(RUTA_EXCEL);
-
-  if (!existe) {
-    console.error(`❌ No se encuentra el Excel en: ${RUTA_EXCEL}`);
-    console.error("   Asegúrate de crear el archivo en esa ubicación");
-    return false;
-  }
-
-  console.log(`✅ Excel encontrado en: ${RUTA_EXCEL}`);
-  return true;
-};
-
-// ============================================
-// 6. FUNCIÓN DE PRUEBA (actualizada)
-// ============================================
-export const probarHelper = async () => {
-  console.log("\n🧪 Probando Excel Helper...");
-
-  try {
-    // 1. Verificar que el Excel existe
-    if (!validarExcelExiste()) {
-      console.log("❌ Prueba fallida: Excel no encontrado");
-      return;
-    }
-
-    // 2. Abrir Excel
-    const { workbook, hoja } = await abrirExcel();
-    console.log("✅ Excel abierto correctamente");
-
-    // 3. Probar generador de FacturaID estilo Excel
-    console.log("\n📋 Probando generador de FacturaID...");
-    const facturaId1 = generarFacturaIdExcel(hoja, new Date("2024-01-15")); // Fecha fija para prueba
-    console.log(`   FacturaID generado: ${facturaId1}`);
-
-    const facturaId2 = generarFacturaIdExcel(hoja, new Date("2024-01-15")); // Misma fecha
-    console.log(`   Segundo ID: ${facturaId2} (debería ser superior)`);
-
-    const facturaId3 = generarFacturaIdExcel(hoja, new Date("2024-01-16")); // Día siguiente
-    console.log(`   ID día siguiente: ${facturaId3} (prefijo debe cambiar)`);
-
-    // 4. Escribir una línea de prueba con el nuevo ID
-    const datosPrueba = {
-      facturaId: facturaId1,
-      fechaHora: new Date().toISOString(),
-      codigoProducto: 999,
-      nombreProducto: "Producto de Prueba",
-      cantidad: 1,
-      precioUnitario: 100,
-      subtotal: 100,
-      efectivo: 100,
-      transferencia: 0,
-    };
-
-    escribirLineaVenta(hoja, datosPrueba);
-    console.log("✅ Línea de prueba escrita");
-
-    // 5. Guardar Excel
-    await guardarExcel(workbook);
-    console.log("✅ Excel guardado");
-
-    console.log("🎉 Prueba completada exitosamente!\n");
-  } catch (error) {
-    console.error("❌ Prueba fallida:", error.message);
-  }
-};
-
-// ============================================
-// 7. OBTENER HOJA POR NOMBRE (desde un workbook existente)
+// 5. OBTENER HOJA POR NOMBRE (desde un workbook existente)
 // ============================================
 export const obtenerHojaPorNombre = (workbook, nombreHoja) => {
   try {

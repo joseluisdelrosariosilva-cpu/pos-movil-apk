@@ -55,18 +55,7 @@ export function eliminarFlagActivo() {
 }
 
 // ============================================
-// 3. VERIFICAR SI EL SERVIDOR ESTÁ ACTIVO
-// ============================================
-export function servidorEstaActivo() {
-  try {
-    return fs.existsSync(FLAG_ACTIVO);
-  } catch (error) {
-    return false;
-  }
-}
-
-// ============================================
-// 4. VERIFICAR SI DEBEMOS DETENERNOS
+// 3. VERIFICAR SI DEBEMOS DETENERNOS
 // ============================================
 export function debeDetenerse() {
   try {
@@ -77,7 +66,7 @@ export function debeDetenerse() {
 }
 
 // ============================================
-// 5. LIMPIAR FLAG DE DETENCIÓN
+// 4. LIMPIAR FLAG DE DETENCIÓN
 // ============================================
 export function limpiarFlagDetener() {
   try {
@@ -94,21 +83,7 @@ export function limpiarFlagDetener() {
 }
 
 // ============================================
-// 6. CREAR FLAG DE DETENCIÓN (para pruebas)
-// ============================================
-export function solicitarDetencion() {
-  try {
-    fs.writeFileSync(FLAG_DETENER, new Date().toISOString());
-    console.log("🛑 Señal de detención enviada");
-    return true;
-  } catch (error) {
-    console.error("❌ Error solicitando detención:", error.message);
-    return false;
-  }
-}
-
-// ============================================
-// 7. OBTENER INFORMACIÓN DE LOS FLAGS
+// 5. OBTENER INFORMACIÓN DE LOS FLAGS
 // ============================================
 export function obtenerInfoFlags() {
   const info = {
@@ -136,7 +111,7 @@ export function obtenerInfoFlags() {
 }
 
 // ============================================
-// 8. LIMPIAR TODOS LOS FLAGS (para reinicio)
+// 6. LIMPIAR TODOS LOS FLAGS (para reinicio)
 // ============================================
 export function limpiarTodosLosFlags() {
   eliminarFlagActivo();
@@ -144,9 +119,4 @@ export function limpiarTodosLosFlags() {
   console.log("🧹 Todos los flags limpiados");
 }
 
-// Exportar rutas por si se necesitan
-export const rutas = {
-  flagsDir: FLAGS_DIR,
-  flagActivo: FLAG_ACTIVO,
-  flagDetener: FLAG_DETENER,
-};
+

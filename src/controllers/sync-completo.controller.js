@@ -320,19 +320,37 @@ export const sincronizarCompleto = async (req, res) => {
       // ════════════════════════════════════════
       if (ventas && ventas.length) {
         const { maxPorPrefijo } = escanearFacturasExistentes(hojaPendientes);
-        const idsUsadosBatch = new Set(); // IDs finales usados en este batch para evitar colisiones intra-batch
+        const idsUsadosBatch = new Set();
+        const facturasProcesadas = new Map(); // facturaOriginal → facturaFinal (agrupa líneas hermanas)
 
         for (const venta of ventas) {
           const facturaOriginal = venta.facturaId?.toString().trim();
           if (!facturaOriginal) continue;
 
-          // Traducir producto si fue remapeado
           const codProducto = remapCodigos[venta.codigoProducto?.toString().trim()] || venta.codigoProducto;
 
-          // Determinar si el ID de factura necesita remapeo
+          // Si ya procesamos otra línea de esta misma factura, reusamos el mismo facturaFinal
+          if (facturasProcesadas.has(facturaOriginal)) {
+            const facturaFinal = facturasProcesadas.get(facturaOriginal);
+
+            escribirLineaVenta(hojaPendientes, {
+              facturaId: facturaFinal,
+              fechaHora: venta.fechaHora,
+              codigoProducto: codProducto,
+              nombreProducto: venta.nombre,
+              cantidad: venta.cantidad,
+              precioUnitario: venta.precio || venta.precioUnitario,
+              subtotal: venta.subtotal,
+              efectivo: venta.efectivo,
+              transferencia: venta.transferencia,
+            });
+            actualizarStock(workbook, codProducto, venta.cantidad);
+            countVentas++;
+            continue;
+          }
+
           let facturaFinal = facturaOriginal;
           if (remapFacturas[facturaOriginal]) {
-            // Ya remapeamos esta factura antes en el batch
             facturaFinal = remapFacturas[facturaOriginal];
           } else {
             const prefijo = facturaOriginal.length >= 10 ? facturaOriginal.substring(0, 5) : null;
@@ -341,8 +359,6 @@ export const sincronizarCompleto = async (req, res) => {
             if (prefijo && !isNaN(sufijo)) {
               const maxSufijo = maxPorPrefijo[prefijo] || 0;
 
-              // Remapear si el sufijo es IGUAL O INFERIOR al máximo del prefijo
-              // (cubre duplicados exactos e IDs viejos inferiores al max)
               if (sufijo <= maxSufijo) {
                 const nuevoSufijo = maxSufijo + 1;
                 facturaFinal = prefijo + String(nuevoSufijo).padStart(5, "0");
@@ -353,8 +369,6 @@ export const sincronizarCompleto = async (req, res) => {
             }
           }
 
-          // Colisión intra-batch: si facturaFinal ya fue usado (por remapeo de otra venta
-          // o porque una venta sin remapear coincide con un remapeo anterior), lo empujamos
           while (idsUsadosBatch.has(facturaFinal)) {
             const p = facturaFinal.substring(0, 5);
             const s = parseInt(facturaFinal.substring(5, 10), 10);
@@ -365,9 +379,10 @@ export const sincronizarCompleto = async (req, res) => {
               remapFacturas[facturaOriginal] = facturaFinal;
             }
           }
+
+          facturasProcesadas.set(facturaOriginal, facturaFinal);
           idsUsadosBatch.add(facturaFinal);
 
-          // Escribir línea en Pendientes
           escribirLineaVenta(hojaPendientes, {
             facturaId: facturaFinal,
             fechaHora: venta.fechaHora,
@@ -380,7 +395,6 @@ export const sincronizarCompleto = async (req, res) => {
             transferencia: venta.transferencia,
           });
 
-          // Descontar stock
           actualizarStock(workbook, codProducto, venta.cantidad);
 
           countVentas++;

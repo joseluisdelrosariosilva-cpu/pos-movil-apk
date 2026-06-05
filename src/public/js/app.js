@@ -2045,10 +2045,6 @@ document.addEventListener("DOMContentLoaded", async function() {
   actualizarVistaCarrito();
 });
 
-function probarModalManual() {
-  mostrarModalVuelto(1000, 1100, 100);
-}
-
 // ============================================
 // MOSTRAR RESUMEN POR RANGO DE FECHAS (offline desde SQLite)
 // ============================================
