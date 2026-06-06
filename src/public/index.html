@@ -336,6 +336,25 @@
   </div>
 </div>
 
+<!-- Modal para confirmar Merma -->
+<div id="modalMerma" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalMermaTitulo">
+  <div class="modal-card">
+    <h2 id="modalMermaTitulo">📉 Confirmar Merma</h2>
+    <p class="modal-mensaje">¿Desea sacar estas cantidades como merma?</p>
+
+    <div id="modalMermaLista" class="merma-lista">
+      <!-- se llena dinámicamente -->
+    </div>
+
+    <p class="modal-mensaje merma-stock-nota">Se descontarán del stock.</p>
+
+    <div class="modal-actions">
+      <button type="button" id="btnCancelarMerma" class="modal-btn modal-btn-secundario">Cancelar</button>
+      <button type="button" id="btnConfirmarMerma" class="modal-btn modal-btn-primario">Confirmar merma</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal para sincronización en progreso -->
 <div id="modalSyncProgress" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalSyncTitulo">
   <div class="modal-card">

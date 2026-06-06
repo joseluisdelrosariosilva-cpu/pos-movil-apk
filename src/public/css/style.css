@@ -1100,6 +1100,50 @@ body {
   }
 }
 
+/* ===== MODAL MERMA ===== */
+.merma-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.merma-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.merma-item-nombre {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merma-item-cantidad {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.merma-stock-nota {
+  font-size: 13px;
+  color: var(--warning);
+  margin-bottom: 16px;
+}
+
 .hidden {
   display: none;
 }
