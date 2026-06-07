@@ -2343,7 +2343,7 @@ async function cargarHistorial(fechaISO) {
       html += '<div class="historial-factura-header">';
       html += '<div class="historial-factura-info">';
       html += '<span class="historial-factura-id">Factura: ' + f.facturaId + '</span>';
-      html += '<span class="historial-factura-fecha">' + (f.fechaHora || "") + '</span>';
+      html += '<span class="historial-factura-fecha">' + (f.fechaHora ? new Date(f.fechaHora).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: true }) : "") + '</span>';
       html += '</div>';
       html += '<div class="historial-factura-estado">';
       html += '<span class="estado-badge ' + estadoClass + '">' + estadoTexto + '</span>';
