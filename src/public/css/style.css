@@ -328,10 +328,6 @@ body {
   color: #e53935;
 }
 
-.resumen-gasto-item {
-  border-left: 3px solid #e53935 !important;
-}
-
 .resumen-gasto-item .gasto-descripcion {
   flex: 1;
   font-weight: 500;
@@ -379,6 +375,22 @@ body {
 
 .lista-productos-resumen .producto-total {
   color: var(--success);
+  font-weight: 600;
+}
+
+/* Items de merma en el resumen — se ven como pérdida */
+.resumen-merma-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.resumen-merma-item .producto-cantidad {
+  color: var(--danger, #e74c3c);
   font-weight: 600;
 }
 

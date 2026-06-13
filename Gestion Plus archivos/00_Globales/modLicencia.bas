@@ -13,7 +13,7 @@ Public Function VerificarDispositivo() As Boolean
     dispositivosPermitidos.Add "DESKTOP-FFH10GP|Jose|279994388"
     dispositivosPermitidos.Add "DESKTOP-27I02D0|Aris|351847289"
     dispositivosPermitidos.Add "DESKTOP-6Q2K16M|Noel|1088704218"
-    dispositivosPermitidos.Add "Ros√©|Administrador|-561350944"
+    dispositivosPermitidos.Add "ROS…|Administrador|-561350944"
     Dim idActual As String
     idActual = ObtenerIDDispositivo()
     Dim i As Integer
@@ -69,7 +69,7 @@ ErrorHandler:
     Call modSeguridad.DesprotegerHoja(ws)
     fechaExpiracion = DateAdd("d", 1, Date)
     ThisWorkbook.Sheets(HOJA_HIDDEN).Range("A1") = fechaExpiracion
-    ThisWorkbook.Sheets(HOJA_HIDDEN).Visible = xlSheetVeryHidden
+    ThisWorkbook.Sheets(HOJA_HIDDEN).visible = xlSheetVeryHidden
     VerificarVigencia = True
     Call modSeguridad.ProtegerHoja(ws)
 End Function
@@ -115,3 +115,5 @@ Private Function HashString(texto As String) As String
     Next i
     HashString = CStr(hash)
 End Function
+
+

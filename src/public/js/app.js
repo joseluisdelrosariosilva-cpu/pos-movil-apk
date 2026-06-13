@@ -2195,6 +2195,8 @@ function actualizarResumenUI(data) {
   var totalGastosEl = document.getElementById("resumenTotalGastos");
   var listaGastosEl = document.getElementById("listaGastosResumen");
   var gastosTitulo = document.getElementById("gastosTitulo");
+  var listaMermasEl = document.getElementById("listaMermasResumen");
+  var mermasTitulo = document.getElementById("mermasTitulo");
 
   if (totalEl) totalEl.textContent = formatearMoneda(data.totalIngresado || 0);
   if (efectivoEl) efectivoEl.textContent = formatearMoneda(data.efectivo || 0);
@@ -2236,6 +2238,26 @@ function actualizarResumenUI(data) {
         html += '</li>';
       }
       listaEl.innerHTML = html;
+    }
+  }
+
+  // Mostrar mermas agrupadas por producto
+  if (listaMermasEl && mermasTitulo) {
+    var mermas = data.mermas || [];
+    if (mermas.length === 0) {
+      listaMermasEl.innerHTML = "";
+      mermasTitulo.classList.add("hidden");
+    } else {
+      mermasTitulo.classList.remove("hidden");
+      var mHtml = "";
+      for (var mi = 0; mi < mermas.length; mi++) {
+        var m = mermas[mi];
+        mHtml += '<li class="resumen-merma-item">';
+        mHtml += '<span class="producto-nombre">' + m.nombre + '</span>';
+        mHtml += '<span class="producto-cantidad">' + formatearNumero(m.cantidad || 0) + 'u</span>';
+        mHtml += '</li>';
+      }
+      listaMermasEl.innerHTML = mHtml;
     }
   }
 }

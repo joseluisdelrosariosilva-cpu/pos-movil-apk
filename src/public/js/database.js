@@ -883,6 +883,7 @@ async function getResumenOffline(desde, hasta) {
         efectivo: 0,
         transferencia: 0,
         productosVendidos: [],
+        mermas: [],
         totalGastos: Math.round(totalGastos * 1000) / 1000,
         gastos: gastos
       };
@@ -938,11 +939,50 @@ async function getResumenOffline(desde, hasta) {
     var gastos = await leerGastosDelDia(fechaDesde, fechaHasta);
     var totalGastos = gastos.reduce(function(acc, g) { return acc + Number(g.monto || 0); }, 0);
 
+    // ---- MERMAS DEL RANGO (agrupadas por producto) ----
+    var mermas = [];
+    try {
+      var mermasRaw = [];
+      if (storageMode === "sqlite" && db) {
+        var mResult = await db.execute(
+          "SELECT * FROM mermas_pending ORDER BY id"
+        );
+        mermasRaw = mResult.values || [];
+      } else {
+        mermasRaw = leerLocal(LS_KEYS.mermas, []);
+      }
+      // Filtrar por rango de fechas
+      mermasRaw = mermasRaw.filter(function(m) {
+        var fechaMerma = extraerFechaISO(m.fecha_hora);
+        return fechaMerma >= fechaDesde && fechaMerma <= fechaHasta;
+      });
+      // Agrupar por producto
+      var mermasAgrupadas = {};
+      for (var mi = 0; mi < mermasRaw.length; mi++) {
+        var m = mermasRaw[mi];
+        var key = m.codigo_producto;
+        if (!mermasAgrupadas[key]) {
+          mermasAgrupadas[key] = {
+            codigo: m.codigo_producto,
+            nombre: m.nombre,
+            cantidad: 0
+          };
+        }
+        mermasAgrupadas[key].cantidad += Number(m.cantidad || 0);
+      }
+      // Convertir a array y ordenar por cantidad descendente
+      mermas = Object.keys(mermasAgrupadas).map(function(k) { return mermasAgrupadas[k]; });
+      mermas.sort(function(a, b) { return b.cantidad - a.cantidad; });
+    } catch (mErr) {
+      console.error("❌ Error leyendo mermas para resumen:", mErr);
+    }
+
     return {
       totalIngresado: Math.round(totalIngresado * 1000) / 1000,
       efectivo: Math.round(totalEfectivo * 1000) / 1000,
       transferencia: Math.round(totalTransferencia * 1000) / 1000,
       productosVendidos: productosVendidos,
+      mermas: mermas,
       totalGastos: Math.round(totalGastos * 1000) / 1000,
       gastos: gastos
     };
@@ -952,7 +992,8 @@ async function getResumenOffline(desde, hasta) {
       totalIngresado: 0,
       efectivo: 0,
       transferencia: 0,
-      productosVendidos: []
+      productosVendidos: [],
+      mermas: []
     };
   }
 }
