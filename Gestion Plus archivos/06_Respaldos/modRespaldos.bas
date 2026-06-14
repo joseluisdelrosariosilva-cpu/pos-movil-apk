@@ -1,8 +1,8 @@
 Attribute VB_Name = "modRespaldos"
 ' ============================================================================
-' MÃ“DULO: modRespaldos
-' PROPÃ“SITO: CreaciÃ³n de respaldos y limpieza de base de datos.
-' ConsolidaciÃ³n de MÃ³dulo2 + la funciÃ³n crear_respaldo_diario de ThisWorkbook.
+' MÓDULO: modRespaldos
+' PROPÓSITO: Creación de respaldos y limpieza de base de datos.
+' Consolidación de Módulo2 + la función crear_respaldo_diario de ThisWorkbook.
 ' ============================================================================
 
 Option Explicit
@@ -15,89 +15,8 @@ Public Sub LimpiarTabla(tbl As ListObject)
     End If
 End Sub
 
-' --- CREAR RESPALDO Y LIMPIAR BD (versiÃ³n original) ------------------------
-' Crea un respaldo en Excel .xlsx (solo datos, sin macros) y limpia la BD.
 
-Public Sub CrearRespaldo()
-    Dim wbNuevo As Workbook
-    Dim wsOrigenVentas As Worksheet, wsOrigenGastos As Worksheet
-    Dim wsDestinoVentas As Worksheet, wsDestinoGastos As Worksheet
-    Dim tblventas As ListObject, tblGastos As ListObject
-    Dim nombreArchivo As String
-    Dim fechaMin As Date, fechaMax As Date
-    Dim rutaRespaldos As String
-    Dim ActualToInicial As ListRow
-    
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-    Application.EnableEvents = False
-    
-    On Error GoTo ErrorHandler
-    
-    Set wsOrigenVentas = ThisWorkbook.Sheets(HOJA_VENTAS)
-    Set tblventas = wsOrigenVentas.ListObjects(TBL_VENTAS)
-    Set wsOrigenGastos = ThisWorkbook.Sheets(HOJA_GASTOS)
-    Set tblGastos = wsOrigenGastos.ListObjects(TBL_GASTOS)
-    
-    ' Calcular rango de fechas
-    fechaMin = WorksheetFunction.Min(ThisWorkbook.Sheets(HOJA_FECHAS).ListObjects(TBL_FECHAS_UNICAS).ListColumns("Fecha").DataBodyRange)
-    fechaMax = WorksheetFunction.Max(ThisWorkbook.Sheets(HOJA_FECHAS).ListObjects(TBL_FECHAS_UNICAS).ListColumns("Fecha").DataBodyRange)
-    
-    nombreArchivo = "Respaldo_" & Format(fechaMin, "d-mmm-yyyy") & "_" & Format(fechaMax, "d-mmm-yyyy") & ".xlsx"
-    rutaRespaldos = Environ("Jose") & "D:\Work\Respaldos\"
-    
-    If Dir(rutaRespaldos, vbDirectory) = "" Then MkDir rutaRespaldos
-    
-    ' Crear nuevo libro con los datos
-    Set wbNuevo = Workbooks.Add
-    tblventas.HeaderRowRange.Copy
-    Set wsDestinoVentas = wbNuevo.Sheets(1)
-    wsDestinoVentas.Name = "Historial de ventas"
-    wsDestinoVentas.Range("A1").PasteSpecial Paste:=xlPasteAll
-    
-    If Not tblventas.DataBodyRange Is Nothing Then
-        tblventas.DataBodyRange.Copy
-        wsDestinoVentas.Range("A2").PasteSpecial Paste:=xlPasteAll
-    End If
-    
-    tblGastos.HeaderRowRange.Copy
-    Set wsDestinoGastos = wbNuevo.Sheets.Add(After:=wbNuevo.Sheets(wbNuevo.Sheets.Count))
-    wsDestinoGastos.Name = "Historial de Gastos"
-    wsDestinoGastos.Range("A1").PasteSpecial Paste:=xlPasteAll
-    
-    If Not tblGastos.DataBodyRange Is Nothing Then
-        tblGastos.DataBodyRange.Copy
-        wsDestinoGastos.Range("A2").PasteSpecial Paste:=xlPasteAll
-    End If
-    
-    Application.CutCopyMode = False
-    wbNuevo.SaveAs rutaRespaldos & nombreArchivo, FileFormat:=xlOpenXMLWorkbook
-    wbNuevo.Close SaveChanges:=False
-    
-    ' Restaurar stock inicial = actual y limpiar tablas
-    For Each ActualToInicial In ThisWorkbook.Worksheets(HOJA_ALMACEN).ListObjects(TBL_INVENTARIO).ListRows
-        ActualToInicial.Range(COL_INV_CANT_INI) = ActualToInicial.Range(COL_INV_CANT_ACT)
-    Next ActualToInicial
-    
-    LimpiarTabla tblventas
-    LimpiarTabla tblGastos
-    LimpiarTabla ThisWorkbook.Sheets(HOJA_FECHAS).ListObjects(TBL_FECHAS_UNICAS)
-    
-    MsgBox "Respaldo completado exitosamente." & vbCrLf & _
-           "Archivo guardado en: " & rutaRespaldos & nombreArchivo, vbInformation
-    
-Exitsub:
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-    Application.EnableEvents = True
-    Exit Sub
-    
-ErrorHandler:
-    MsgBox "Error: " & Err.Description, vbCritical
-    Resume Exitsub
-End Sub
-
-' --- CREAR RESPALDO (versiÃ³n completa con macros) --------------------------
+' --- CREAR RESPALDO (versión completa con macros) --------------------------
 
 Public Sub CrearRespaldoCompleto()
     Dim wbRespaldo As Workbook
@@ -109,7 +28,7 @@ Public Sub CrearRespaldoCompleto()
     Dim i As Long
     Dim response As VbMsgBoxResult
     
-    response = MsgBox("Â¿EstÃ¡ seguro de que desea crear una copia de respaldo y limpiar la base de datos actual?", _
+    response = MsgBox("¿Está seguro de que desea crear una copia de respaldo y limpiar la base de datos actual?", _
                       vbYesNo + vbQuestion)
     If Not response = vbYes Then Exit Sub
     
@@ -136,7 +55,7 @@ Public Sub CrearRespaldoCompleto()
     For Each ws In wbRespaldo.Worksheets
         ws.Unprotect password:=PASS_HOJA
         For i = ws.Shapes.Count To 1 Step -1
-            If ws.Shapes(i).Name Like "Boton_*" Then
+            If ws.Shapes(i).name Like "Boton_*" Then
                 ws.Shapes(i).Delete
             End If
         Next i
@@ -152,7 +71,7 @@ Public Sub CrearRespaldoCompleto()
         AllowUsingPivotTables:=True, _
         UserInterfaceOnly:=True
     
-    ' Sellar fecha de expiraciÃ³n
+    ' Sellar fecha de expiración
     wbRespaldo.Worksheets(HOJA_HIDDEN).Unprotect password:=PASS_HOJA
     wbRespaldo.Worksheets(HOJA_HIDDEN).Range("A1") = DateAdd("y", 10000, Date)
     wbRespaldo.Worksheets(HOJA_HIDDEN).Protect password:=PASS_HOJA, UserInterfaceOnly:=True
@@ -252,3 +171,211 @@ ErrorHandler:
     MsgBox "Error: " & Err.Description, vbCritical
     Resume Exitsub
 End Sub
+
+' ============================================================================
+' Macro: ImportarDatosDesdeExcel
+' Proposito: Te permite seleccionar un Excel de la misma carpeta y reescribe
+'            los datos de TODAS las tablas (ListObjects) de TODAS las hojas
+'            del libro actual con los datos del archivo seleccionado.
+' ============================================================================
+
+Sub ImportarDatosDesdeExcel()
+    Dim srcFile   As Variant
+    Dim srcWB     As Workbook
+    Dim ws        As Worksheet
+    Dim lo        As ListObject
+    Dim srcLO     As ListObject
+    Dim importados As Long, omitidos As Long
+    
+    ' ---- 1. Seleccionar archivo origen ----
+    srcFile = Application.GetOpenFilename( _
+        FileFilter:="Archivos Excel (*.xls*),*.xls*", _
+        Title:="Seleccioná el archivo del cual importar los datos", _
+        MultiSelect:=False)
+    
+    If srcFile = False Then
+        MsgBox "No seleccionaste ningún archivo. Operación cancelada.", _
+               vbInformation, "Importación cancelada"
+        Exit Sub
+    End If
+    
+    ' ---- 2. Validar que no sea el mismo archivo ----
+    If ThisWorkbook.fullName = srcFile Then
+        MsgBox "Seleccionaste el mismo archivo que está en uso. Elegí otro.", _
+               vbExclamation, "Archivo inválido"
+        Exit Sub
+    End If
+    
+    ' ---- 3. Abrir archivo origen (solo lectura) ----
+    On Error GoTo ErrorAbrir
+    Set srcWB = Workbooks.Open(srcFile, ReadOnly:=True, UpdateLinks:=False)
+    On Error GoTo 0
+    
+    ' ---- 4. Desproteger libro destino ----
+    On Error Resume Next
+    ThisWorkbook.Unprotect PASS_LIBRO
+    On Error GoTo 0
+    
+    ' ---- 5. Procesar cada tabla del libro DESTINO ----
+    importados = 0
+    omitidos = 0
+    
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        ' Desproteger hoja antes de modificar
+        On Error Resume Next
+        ws.Unprotect PASS_HOJA
+        On Error GoTo 0
+        
+        For Each lo In ws.ListObjects
+            Set srcLO = FindListObjectByName(srcWB, lo.name)
+            
+            If srcLO Is Nothing Then
+                omitidos = omitidos + 1
+            Else
+                CopyTableData lo, srcLO
+                importados = importados + 1
+            End If
+        Next lo
+        
+        ' Reproteger hoja (UserInterfaceOnly deja que el VBA siga modificando)
+        On Error Resume Next
+        ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
+        On Error GoTo 0
+    Next ws
+    
+    ' Reproteger libro
+    On Error Resume Next
+    ThisWorkbook.Protect password:=PASS_LIBRO
+    On Error GoTo 0
+    
+    srcWB.Close SaveChanges:=False
+    
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    
+    ' ---- 6. Mostrar resultado ----
+    MsgBox "Importación completada." & vbCrLf & vbCrLf & _
+           "? Tablas importadas: " & importados & vbCrLf & _
+           "? Tablas no encontradas en origen: " & omitidos, _
+           vbInformation, "Resultado de importación"
+    
+    Exit Sub
+
+ErrorAbrir:
+    MsgBox "No se pudo abrir el archivo:" & vbCrLf & srcFile & vbCrLf & vbCrLf & _
+           "Error: " & Err.Description, vbCritical, "Error al abrir"
+    
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+End Sub
+
+Private Sub CopyTableData(ByVal destLO As ListObject, ByVal srcLO As ListObject)
+    Dim vData As Variant
+    Dim r     As Long
+    
+    If srcLO.DataBodyRange Is Nothing Then
+        If Not destLO.DataBodyRange Is Nothing Then
+            destLO.DataBodyRange.ClearContents
+        End If
+        Exit Sub
+    End If
+    
+    vData = srcLO.DataBodyRange.Value
+    
+    Do While destLO.ListRows.Count > 0
+        destLO.ListRows(destLO.ListRows.Count).Delete
+    Loop
+    
+    If Not IsEmpty(vData) Then
+        For r = 1 To UBound(vData, 1)
+            destLO.ListRows.Add
+        Next r
+        
+        destLO.DataBodyRange.Value = vData
+    End If
+End Sub
+
+Private Function FindListObjectByName(ByVal wb As Workbook, ByVal name As String) As ListObject
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    
+    For Each ws In wb.Worksheets
+        For Each lo In ws.ListObjects
+            If lo.name = name Then
+                Set FindListObjectByName = lo
+                Exit Function
+            End If
+        Next lo
+    Next ws
+End Function
+
+' ============================================================================
+' Macro: LimpiarTodasLasTablas
+' Proposito: Elimina TODAS las filas de datos de TODAS las tablas
+'            (ListObjects) de TODAS las hojas del libro actual.
+'            Las tablas quedan vacías, solo con los encabezados.
+' ============================================================================
+
+Sub LimpiarTodasLasTablas()
+    Dim ws  As Worksheet
+    Dim lo  As ListObject
+    Dim respuesta As VbMsgBoxResult
+    
+    ' ---- 1. Confirmar ----
+    respuesta = MsgBox("¿Estás seguro de que querés ELIMINAR TODOS LOS DATOS " & _
+                       "de TODAS las tablas?" & vbCrLf & vbCrLf & _
+                       "Las filas se borran por completo. Esta acción NO se puede deshacer.", _
+                       vbYesNo + vbExclamation, "Limpiar todas las tablas")
+    
+    If respuesta <> vbYes Then
+        MsgBox "Operación cancelada.", vbInformation, "Cancelado"
+        Exit Sub
+    End If
+    
+    ' ---- 2. Desproteger libro ----
+    On Error Resume Next
+    ThisWorkbook.Unprotect PASS_LIBRO
+    On Error GoTo 0
+    
+    ' ---- 3. Limpiar cada tabla ----
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        ' Desproteger hoja
+        On Error Resume Next
+        ws.Unprotect PASS_HOJA
+        On Error GoTo 0
+        
+        For Each lo In ws.ListObjects
+            ' Eliminar todas las filas de datos de abajo hacia arriba
+            Do While lo.ListRows.Count > 0
+                lo.ListRows(lo.ListRows.Count).Delete
+            Loop
+        Next lo
+        
+        ' Reproteger hoja
+        On Error Resume Next
+        ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
+        On Error GoTo 0
+    Next ws
+    
+    ' Reproteger libro
+    On Error Resume Next
+    ThisWorkbook.Protect password:=PASS_LIBRO
+    On Error GoTo 0
+    
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    
+    MsgBox "Todas las tablas quedaron vacías (solo encabezados).", vbInformation, "Completado"
+End Sub
+
