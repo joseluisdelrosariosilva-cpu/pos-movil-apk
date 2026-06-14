@@ -1,11 +1,11 @@
 Attribute VB_Name = "calling"
 ' ============================================================================
-' MÃ“DULO: calling (MIGRADO - Fase 2)
-' PROPÃ“SITO: Macros llamadoras desde botones y formularios.
-' Los form-callers se mantienen; la lÃ³gica de negocio delega.
+' MÓDULO: calling (MIGRADO - Fase 2)
+' PROPÓSITO: Macros llamadoras desde botones y formularios.
+' Los form-callers se mantienen; la lógica de negocio delega.
 ' ============================================================================
-' NOTA: Las variables pÃºblicas fila_a_modificar, seleccion_destino_calendario,
-' modoModificacion, recetaAModificar estÃ¡n declaradas en modGlobales.bas.
+' NOTA: Las variables públicas fila_a_modificar, seleccion_destino_calendario,
+' modoModificacion, recetaAModificar están declaradas en modGlobales.bas.
 ' ============================================================================
 
 Option Explicit
@@ -26,7 +26,7 @@ Sub llamar_modificar_form()
     fila_a_modificar = ActiveCell.Row
 
     If fila_a_modificar > 4 And Range("B" & fila_a_modificar) <> "" Then
-        respuesta = MsgBox("Â¿EstÃ¡ seguro que desea modificar el producto seleccionado?", vbYesNo, "Eliminar producto")
+        respuesta = MsgBox("¿Está seguro que desea modificar el producto seleccionado?", vbYesNo, "Eliminar producto")
         Select Case respuesta
             Case Is = 6
                 ingresar_form.modificar_registrar_textbox.Value = "M"
@@ -36,7 +36,7 @@ Sub llamar_modificar_form()
                 Exit Sub
         End Select
     Else
-        MsgBox "Seleccione la lÃ­nea con el producto que desea modificar", vbExclamation
+        MsgBox "Seleccione la línea con el producto que desea modificar", vbExclamation
     End If
 End Sub
 
@@ -46,17 +46,17 @@ End Sub
 
 Sub reinicio_POS()
     Unload facturacion
-    MsgBox "Venta realizada con Ã©xito", vbInformation
+    MsgBox "Venta realizada con éxito", vbInformation
     facturacion.Show
 End Sub
 
-' --- FORZAR ACTUALIZACIÃ“N DE FÃ“RMULAS (delega en modStock) -----------------
+' --- FORZAR ACTUALIZACIÓN DE FÓRMULAS (delega en modStock) -----------------
 
 Sub setear_funcion()
     Call modStock.ForzarActualizacionStock
 End Sub
 
-' --- MODIFICAR RECETA (interfaz: validaciÃ³n + abrir formulario) -----------
+' --- MODIFICAR RECETA (interfaz: validación + abrir formulario) -----------
 
 Sub ModificarReceta()
     Dim ws As Worksheet
@@ -81,8 +81,8 @@ Sub ModificarReceta()
     nombreReceta = ws.Cells(filaSeleccionada, tblRecetas.ListColumns("Receta").Range.Column).Value
     
     Dim respuesta As VbMsgBoxResult
-    respuesta = MsgBox("Â¿EstÃ¡ seguro que desea modificar la receta: '" & nombreReceta & "'?", _
-                      vbYesNo + vbQuestion, "Confirmar modificaciÃ³n")
+    respuesta = MsgBox("¿Está seguro que desea modificar la receta: '" & nombreReceta & "'?", _
+                      vbYesNo + vbQuestion, "Confirmar modificación")
     
     If respuesta = vbYes Then
         ShowModoModificacion nombreReceta
@@ -107,7 +107,7 @@ Sub llamar_modificar_form_ingrediente()
     fila_a_modificar = ActiveCell.Row
 
     If fila_a_modificar > 4 And Range("B" & fila_a_modificar) <> "" Then
-        respuesta = MsgBox("Â¿EstÃ¡ seguro que desea modificar el producto seleccionado?", vbYesNo, "Eliminar producto")
+        respuesta = MsgBox("¿Está seguro que desea modificar el producto seleccionado?", vbYesNo, "Eliminar producto")
         Select Case respuesta
             Case Is = 6
                 ingresar_ingr_nuevo_form.modificar_ingresar_nuevo_ingr_textbox = "M"
@@ -117,7 +117,7 @@ Sub llamar_modificar_form_ingrediente()
                 Exit Sub
         End Select
     Else
-        MsgBox "Seleccione la lÃ­nea con el producto que desea modificar", vbExclamation
+        MsgBox "Seleccione la línea con el producto que desea modificar", vbExclamation
     End If
 End Sub
 
@@ -125,4 +125,8 @@ Sub llamar_ingresar_ingr_existente()
     ingresar_ingr_existente_form.Show
 End Sub
 
-' (ReabastecerProducto fue reasignado directamente a modStock.ReabastecerProducto)
+Sub llamar_ingresarProdExistente()
+    ingresarProdExistente.Show
+End Sub
+
+

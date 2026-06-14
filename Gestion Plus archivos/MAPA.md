@@ -36,8 +36,10 @@ Gestion Plus archivos/
 │                          # [Fase3] Nueva: RegistrarVentaCompleta (productos + factura + stock + gastos)
 ├── 05_Trabajadores/      # Gestión de trabajadores
 │   └── modTrabajadores.bas  # PagarTrabajador, ModificarTrabajador, AgregarTrabajador (+), ModificarTrabajadorEnTabla (+)
-├── 06_Respaldos/         # Respaldos y limpieza
+├── 06_Respaldos/         # Respaldos, limpieza e importación de datos
 │   └── modRespaldos.bas   # Respaldo, respaldo completo, diario, final
+│                          # [Nuevo] ImportarDatosDesdeExcel: reescribe todas las tablas desde otro archivo
+│                          # [Nuevo] LimpiarTodasLasTablas: elimina todas las filas de datos de todas las tablas
 ├── 07_POS_Movil/         # Servidor y sincronización (extraído de serverControl.bas)
 │   ├── modServerControl.bas
 │   ├── modImportacion.bas  # Importa: entradas, abastecimientos, mermas,
