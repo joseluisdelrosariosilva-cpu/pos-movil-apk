@@ -1,26 +1,19 @@
 VERSION 5.00
-Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} ingresarProdExistente 
-   Caption         =   "Abastecer Producto Existente"
+Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} merma_form 
+   Caption         =   "Sacar producto como merma"
    ClientHeight    =   3800
    ClientLeft      =   120
    ClientTop       =   470
    ClientWidth     =   5480
-   OleObjectBlob   =   "ingresarProdExistente.frx":0000
+   OleObjectBlob   =   "merma_form.frx":0000
    StartUpPosition =   1  'Centrar en propietario
 End
-Attribute VB_Name = "ingresarProdExistente"
+Attribute VB_Name = "merma_form"
 Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 Option Explicit
-
-' ============================================================================
-' FORMULARIO: ingresarProdExistente
-' PROPÓSITO:  Interfaz para reabastecer productos del inventario.
-'              Reemplaza el InputBox de ReabastecerProducto() con un
-'              selector visual de producto + cantidad.
-' ============================================================================
 
 Private Sub boton_ingresar_covered_Click()
     ' --- Validar campos ---
@@ -40,7 +33,11 @@ Private Sub boton_ingresar_covered_Click()
     Dim fila As ListRow
     Dim producto As String
     Dim cantidad As Double
-    Dim stockInicial As Double
+    Dim codigo As String
+    Dim nombre As String
+    Dim stock As Double
+    Dim precioCosto As Double
+    Dim monto As Double
     
     Set ws = ThisWorkbook.Worksheets(HOJA_ALMACEN)
     Set tbl = ws.ListObjects(TBL_INVENTARIO)
@@ -51,20 +48,32 @@ Private Sub boton_ingresar_covered_Click()
     ' --- Buscar producto por NOMBRE en la tabla INVENTARIO ---
     For Each fila In tbl.ListRows
         If fila.Range.Cells(1, COL_INV_NOMBRE).Value = producto Then
-            stockInicial = fila.Range.Cells(1, COL_INV_CANT_INI).Value
+            codigo = CStr(fila.Range.Cells(1, COL_INV_CODIGO).Value)
+            nombre = CStr(fila.Range.Cells(1, COL_INV_NOMBRE).Value)
+            stock = CDbl(fila.Range.Cells(1, COL_INV_CANT_ACT).Value)
+            precioCosto = CDbl(fila.Range.Cells(1, COL_INV_PRECIO_C).Value)
             
-            ' Sumar cantidad al stock inicial
-            fila.Range.Cells(1, COL_INV_CANT_INI).Value = _
-                Format(Round(stockInicial + cantidad, 3), "General Number")
-            fila.Range.Cells(1, COL_INV_FECHA).Value = Date
+            ' Validar stock
+            If stock <= 0 Then
+                MsgBox "El producto no tiene stock disponible.", vbExclamation
+                Exit Sub
+            End If
             
-            ' Recalcular stock actual y columnas financieras
+            If cantidad > stock Then
+                MsgBox "La cantidad no puede superar el stock disponible (" & stock & ").", vbExclamation
+                Exit Sub
+            End If
+            
+            ' --- Registrar gasto como merma ---
+            monto = precioCosto * cantidad
+            Call AgregarGasto(Date, CAT_MERMA, nombre & " x " & cantidad, monto)
+            Call modAgregarRegistros.AgregarFecha(Date)
+            
+            ' Forzar actualización de stock
             Call modStock.ForzarActualizacionStock
             
             Unload Me
-            MsgBox "Reabastecimiento exitoso." & vbCrLf & _
-                   "Producto: " & producto & vbCrLf & _
-                   "Cantidad agregada: " & cantidad, vbInformation
+            MsgBox "Merma registrada correctamente: " & nombre & " x " & cantidad, vbInformation
             Exit Sub
         End If
     Next fila

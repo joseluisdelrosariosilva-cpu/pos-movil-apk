@@ -1,13 +1,13 @@
 Attribute VB_Name = "modCalculosInventario"
 ' ============================================================================
-' MÃ“DULO: modCalculosInventario
-' PROPÃ“SITO: CÃ¡lculos de inventario como precio por unidad base, costo de
-' inversiÃ³n, etc.
+' MÓDULO: modCalculosInventario
+' PROPÓSITO: Cálculos de inventario como precio por unidad base, costo de
+' inversión, etc.
 ' ============================================================================
 
 Option Explicit
 
-' --- CALCULAR PRECIO POR UNIDAD BASE (en GestiÃ³n de Ingredientes) ----------
+' --- CALCULAR PRECIO POR UNIDAD BASE (en Gestión de Ingredientes) ----------
 
 Public Sub CalcularPrecioUBase()
     Dim i As Long
@@ -22,7 +22,7 @@ Public Sub CalcularPrecioUBase()
         If HojaBD.Range("G" & i).Value <> "" And HojaBD.Range("D" & i).Value <> "" Then
             If HojaBD.Range("D" & i).Value <> 0 Then
                 resultado = HojaBD.Range("G" & i).Value / HojaBD.Range("D" & i).Value
-                HojaBD.Range("F" & i).Value = resultado
+                HojaBD.Range("F" & i).Value = Format(Round(resultado, 3), "General Number")
             Else
                 HojaBD.Range("F" & i).Value = "#DIV/0!"
             End If
@@ -32,7 +32,7 @@ Public Sub CalcularPrecioUBase()
     Next i
 End Sub
 
-' --- CALCULAR MONTO DE INVERSIÃ“N DE UN PRODUCTO VENDIDO --------------------
+' --- CALCULAR MONTO DE INVERSIÓN DE UN PRODUCTO VENDIDO --------------------
 
 Public Function CalcularMontoInversion(idProducto As String, cantidad As Double) As Double
     Dim ws As Worksheet

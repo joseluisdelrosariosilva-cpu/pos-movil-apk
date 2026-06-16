@@ -14,12 +14,13 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 
+
 Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: ingresar_ingr_existente_form
-' PROP脫SITO:  Interfaz para agregar cantidad a un ingrediente existente.
-'              Toda la l贸gica de negocio delega en m贸dulos reorganizados.
+' PROP覵ITO:  Interfaz para agregar cantidad a un ingrediente existente.
+'              Toda la l骻ica de negocio delega en m骴ulos reorganizados.
 ' ============================================================================
 
 Private Sub boton_ingresar_covered_Click()
@@ -62,13 +63,13 @@ Private Sub boton_ingresar_covered_Click()
     
     fila = celdaEncontrada.Row
     
-    ' Convertir cantidad a unidad base usando m贸dulo centralizado
+    ' Convertir cantidad a unidad base usando m骴ulo centralizado
     cantidadConvertidaUBase = modConversor.ConvertirUnidad(ingrediente, cantidadSinConvertir, Unidad)
     cantidadActual = HojaBD.Range("D" & fila).Value
     fondoActual = HojaBD.Range("G" & fila).Value
     
-    HojaBD.Range("D" & fila).Value = cantidadConvertidaUBase + cantidadActual
-    HojaBD.Range("G" & fila).Value = fondoActual + costo
+    HojaBD.Range("D" & fila).Value = Format(Round(cantidadConvertidaUBase + cantidadActual, 3), "General Number")
+    HojaBD.Range("G" & fila).Value = Format(Round(fondoActual + costo, 3), "General Number")
     
     ' Recalcular precio por unidad base
     Call modCalculosInventario.CalcularPrecioUBase
@@ -94,7 +95,7 @@ Private Sub Label27_Click()
     boton_ingresar_covered_Click
 End Sub
 
-' --- CARGAR UNIDADES SEG脷N INGREDIENTE SELECCIONADO -------------------------
+' --- CARGAR UNIDADES SEG贜 INGREDIENTE SELECCIONADO -------------------------
 Private Sub Nombre_ingr_ComboBox_Change()
     Dim valorSeleccionado As String
     Dim Unidad_base_valor As String
@@ -113,7 +114,7 @@ Private Sub Nombre_ingr_ComboBox_Change()
     filaEncontrada = celdaEncontrada.Row
     Unidad_base_valor = HojaBD.Range("E" & filaEncontrada).Value
     
-    ' Delegar carga de unidades al m贸dulo centralizado
+    ' Delegar carga de unidades al m骴ulo centralizado
     Call modRecetas.CargarUnidadesPorIngrediente(Me.Unidad_ComboBox, valorSeleccionado)
 End Sub
 

@@ -13,29 +13,28 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
-
 Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: ingresar_ingr_nuevo_form
-' PROPÃ“SITO:  Interfaz para insertar o modificar ingredientes nuevos.
-'              Toda la lÃ³gica de negocio delega en mÃ³dulos reorganizados.
+' PROPÓSITO:  Interfaz para insertar o modificar ingredientes nuevos.
+'              Toda la lógica de negocio delega en módulos reorganizados.
 ' ============================================================================
 
 Private Sub CalcularPrecioUBaseLocal()
     If Me.Cantidad_ingresar_nuevo_producto_TextBox.Value <> "" And _
        Me.Costo_Total_Ingr_Nuevo_TextBox.Value <> "" Then
         
-        Dim costototal As Currency
+        Dim costoTotal As Currency
         Dim cantidad As Single
         Dim precioUbase As Currency
         
-        costototal = Me.Costo_Total_Ingr_Nuevo_TextBox.Value
-        cantidad = Me.Cantidad_ingresar_nuevo_producto_TextBox.Value
+        costoTotal = Format(Round(Me.Costo_Total_Ingr_Nuevo_TextBox.Value, 3), "General Number")
+        cantidad = Format(Round(Me.Cantidad_ingresar_nuevo_producto_TextBox.Value, 3), "General Number")
         
         If cantidad > 0 Then
-            precioUbase = costototal / cantidad
-            Me.Precio_UBase_TextBox.Value = Round(precioUbase, 2)
+            precioUbase = costoTotal / cantidad
+            Me.Precio_UBase_TextBox.Value = Format(Round(precioUbase, 3), "General Number")
         End If
     Else
         Me.Precio_UBase_TextBox.Value = ""
@@ -74,27 +73,27 @@ Private Sub Btn_Active_Click()
         Call modBusquedas.ComprobarRepeticionIngredienteNuevo
         
         If contador2 > 0 Then
-            MsgBox "Rellene los campos vacÃ­os", vbExclamation
+            MsgBox "Rellene los campos vacíos", vbExclamation
         ElseIf repeticion2 = True Then
-            MsgBox "No puede agregar un ingrediente existente. Por favor modifÃ­quelo", vbExclamation
+            MsgBox "No puede agregar un ingrediente existente. Por favor modifíquelo", vbExclamation
         Else
             Set HojaBD = ThisWorkbook.Sheets(HOJA_INGREDIENTES)
             ultima_fila = HojaBD.Range("B" & Rows.Count).End(xlUp).Row
             
             If ultima_fila = 5 And HojaBD.Range("B5").Value = "" Then
                 HojaBD.Range("B5").Value = Me.Nombre_ingrediente_Nuevo_TextBox.Value
-                HojaBD.Range("C5").Value = Me.Cantidad_referencia_TextBox.Value
-                HojaBD.Range("D5").Value = Me.Cantidad_ingresar_nuevo_producto_TextBox.Value
+                HojaBD.Range("C5").Value = Format(Round(Me.Cantidad_referencia_TextBox.Value, 3), "General Number")
+                HojaBD.Range("D5").Value = Format(Round(Me.Cantidad_ingresar_nuevo_producto_TextBox.Value, 3), "General Number")
                 HojaBD.Range("E5").Value = Me.UBase_nuevo_ComboBox.Value
-                HojaBD.Range("G5").Value = Me.Costo_Total_Ingr_Nuevo_TextBox.Value
+                HojaBD.Range("G5").Value = Format(Round(Me.Costo_Total_Ingr_Nuevo_TextBox.Value, 3), "General Number")
             Else
                 Dim f As Integer
                 f = ultima_fila + 1
                 HojaBD.Range("B" & f).Value = Me.Nombre_ingrediente_Nuevo_TextBox.Value
-                HojaBD.Range("C" & f).Value = Me.Cantidad_referencia_TextBox.Value
+                HojaBD.Range("C" & f).Value = Format(Round(Me.Cantidad_referencia_TextBox.Value, 3), "General Number")
                 HojaBD.Range("E" & f).Value = Me.UBase_nuevo_ComboBox.Value
-                HojaBD.Range("D" & f).Value = Me.Cantidad_ingresar_nuevo_producto_TextBox.Value
-                HojaBD.Range("G" & f).Value = Me.Costo_Total_Ingr_Nuevo_TextBox.Value
+                HojaBD.Range("D" & f).Value = Format(Round(Me.Cantidad_ingresar_nuevo_producto_TextBox.Value, 3), "General Number")
+                HojaBD.Range("G" & f).Value = Format(Round(Me.Costo_Total_Ingr_Nuevo_TextBox.Value, 3), "General Number")
             End If
             
             Call modCalculosInventario.CalcularPrecioUBase
@@ -112,15 +111,15 @@ Private Sub Btn_Active_Click()
         Call modBusquedas.ComprobarRepeticionIngredienteModificar
         
         If contador2 > 0 Then
-            MsgBox "Rellene los campos vacÃ­os", vbExclamation
+            MsgBox "Rellene los campos vacíos", vbExclamation
         ElseIf repeticion3 = True Then
             MsgBox "No puede agregar un ingrediente existente", vbExclamation
         Else
             HojaBD.Range("B" & fila_activa).Value = Me.Nombre_ingrediente_Nuevo_TextBox.Value
-            HojaBD.Range("C" & fila_activa).Value = Me.Cantidad_referencia_TextBox.Value
-            HojaBD.Range("D" & fila_activa).Value = Me.Cantidad_ingresar_nuevo_producto_TextBox.Value
+            HojaBD.Range("C" & fila_activa).Value = Format(Round(Me.Cantidad_referencia_TextBox.Value, 3), "General Number")
+            HojaBD.Range("D" & fila_activa).Value = Format(Round(Me.Cantidad_ingresar_nuevo_producto_TextBox.Value, 3), "General Number")
             HojaBD.Range("E" & fila_activa).Value = Me.UBase_nuevo_ComboBox.Value
-            HojaBD.Range("G" & fila_activa).Value = Me.Costo_Total_Ingr_Nuevo_TextBox.Value
+            HojaBD.Range("G" & fila_activa).Value = Format(Round(Me.Costo_Total_Ingr_Nuevo_TextBox.Value, 3), "General Number")
             
             Call modCalculosInventario.CalcularPrecioUBase
             HojaBD.Range("B5").Sort key1:=HojaBD.Range("B5"), Header:=xlYes
@@ -163,10 +162,11 @@ Private Sub UserForm_Activate()
         
         With Me
             .Nombre_ingrediente_Nuevo_TextBox.Value = Range("B" & fila_a_modificar).Value
-            .Cantidad_referencia_TextBox.Value = Range("C" & fila_a_modificar).Value
-            .Cantidad_ingresar_nuevo_producto_TextBox.Value = Range("D" & fila_a_modificar).Value
+            .Cantidad_referencia_TextBox.Value = Format(Round(Range("C" & fila_a_modificar).Value, 3), "General Number")
+            .Cantidad_ingresar_nuevo_producto_TextBox.Value = Format(Round(Range("D" & fila_a_modificar).Value, 3), "General Number")
             .UBase_nuevo_ComboBox.Value = Range("E" & fila_a_modificar).Value
-            .Costo_Total_Ingr_Nuevo_TextBox.Value = Range("G" & fila_a_modificar).Value
+            .Costo_Total_Ingr_Nuevo_TextBox.Value = Format(Round(Range("G" & fila_a_modificar).Value, 3), "General Number")
         End With
     End If
 End Sub
+
