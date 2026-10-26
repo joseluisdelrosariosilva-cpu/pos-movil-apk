@@ -13,13 +13,12 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
-
 Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: ingresar_form
-' PROP√ìSITO:  Interfaz para insertar o modificar productos en inventario.
-'              Toda la l√≥gica de negocio delega en m√≥dulos reorganizados.
+' PROP”SITO:  Interfaz para insertar o modificar productos en inventario.
+'              Toda la lÛgica de negocio delega en mÛdulos reorganizados.
 ' ============================================================================
 
 Private Sub boton_calendario_covered_Click()
@@ -36,7 +35,7 @@ Private Sub boton_ingresar_covered_Click()
     Call modValidacionCampos.ValidarVaciosProducto(Me)
     
     If contador > 0 Then
-        MsgBox "Rellene los campos vac√≠os", vbExclamation
+        MsgBox "Rellene los campos vacÌos", vbExclamation
         Exit Sub
     End If
     
@@ -72,6 +71,9 @@ Private Sub boton_ingresar_covered_Click()
         HojaBD.Range("K" & f).Value = Me.Ganancia_TextBox.Value
     End If
     
+    ' Confirmar el cÛdigo usado (sube el contador de la hoja oculta)
+    Call modGeneradorCodigo.ConfirmarCodigoProducto(Me.codigo_TextBox.Value)
+    
     ' Registrar en tablas auxiliares
     Call modAgregarRegistros.AgregarProductoUnico(Me.nombre_de_producto_TextBox.Value)
     Call modAgregarRegistros.AgregarFecha(CDate(Me.fecha_de_entrada_TextBox.Value))
@@ -95,7 +97,7 @@ Private Sub boton_modificar_covered_Click()
     Call modValidacionCampos.ValidarVaciosProducto(Me)
     
     If contador > 0 Then
-        MsgBox "Rellene los campos vac√≠os", vbExclamation
+        MsgBox "Rellene los campos vacÌos", vbExclamation
         Exit Sub
     End If
     
@@ -110,15 +112,15 @@ Private Sub boton_modificar_covered_Click()
     Range("J" & fila_activa).Value = Me.Ingreso_TextBox.Value
     Range("K" & fila_activa).Value = Me.Ganancia_TextBox.Value
     
-	Call ForzarActualizacionStock
+    Call ForzarActualizacionStock
     Call modAgregarRegistros.AgregarProductoUnico(Me.nombre_de_producto_TextBox.Value)
     
     Unload Me
 End Sub
 
 Private Sub boton_modificar_reposo_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
-    Me.boton_modificar_covered.Visible = True
-    Me.Label9.Visible = True
+    Me.boton_modificar_covered.visible = True
+    Me.Label9.visible = True
     Me.boton_modificar_covered.ZOrder msoBringToFront
     Me.Label9.ZOrder msoBringToFront
 End Sub
@@ -137,7 +139,7 @@ Private Sub Label9_Click()
     boton_modificar_covered_Click
 End Sub
 
-' --- C√ÅLCULOS UI ---------------------------------------------------------
+' --- C¡LCULOS UI ---------------------------------------------------------
 
 Private Sub cantidad_TextBox_Change()
     CalcularIngresoBeneficio
@@ -159,14 +161,14 @@ End Sub
 
 Private Sub CalcularIngresoBeneficio()
     If Me.cantidad_TextBox.Value <> "" And Me.precio_venta_TextBox.Value <> "" Then
-        Dim ingreso As Double
-        ingreso = CDbl(Me.precio_venta_TextBox.Value) * CDbl(Me.cantidad_TextBox.Value)
-        Me.Ingreso_TextBox.Value = Format(Round(ingreso, 3), "General Number")
+        Dim Ingreso As Double
+        Ingreso = CDbl(Me.precio_venta_TextBox.Value) * CDbl(Me.cantidad_TextBox.Value)
+        Me.Ingreso_TextBox.Value = Format(Round(Ingreso, 3), "General Number")
         
         If Me.precio_costo_TextBox.Value <> "" Then
-            Dim beneficio As Double
-            beneficio = ingreso - (CDbl(Me.precio_costo_TextBox.Value) * CDbl(Me.cantidad_TextBox.Value))
-            Me.Ganancia_TextBox.Value = Format(Round(beneficio, 3), "General Number")
+            Dim Beneficio As Double
+            Beneficio = Ingreso - (CDbl(Me.precio_costo_TextBox.Value) * CDbl(Me.cantidad_TextBox.Value))
+            Me.Ganancia_TextBox.Value = Format(Round(Beneficio, 3), "General Number")
         End If
     Else
         Me.Ingreso_TextBox.Value = ""
@@ -174,7 +176,7 @@ Private Sub CalcularIngresoBeneficio()
     End If
 End Sub
 
-' --- VALIDACI√ìN KeyPress ---------------------------------------------------
+' --- VALIDACI”N KeyPress ---------------------------------------------------
 
 Private Sub cantidad_TextBox_KeyPress(ByVal KeyAscii As MSForms.ReturnInteger)
     Call modValidacionNumerica.SoloNumeros(KeyAscii)
@@ -188,12 +190,12 @@ Private Sub precio_costo_TextBox_KeyPress(ByVal KeyAscii As MSForms.ReturnIntege
     Call modValidacionNumerica.SoloNumeros(KeyAscii)
 End Sub
 
-' --- INICIALIZACI√ìN -------------------------------------------------------
+' --- INICIALIZACI”N -------------------------------------------------------
 
 Private Sub UserForm_Activate()
     If Me.modificar_registrar_textbox.Value = "R" Then
-        Me.boton_modificar_reposo.Visible = False
-        Me.boton_ingresar_reposo.Visible = True
+        Me.boton_modificar_reposo.visible = False
+        Me.boton_ingresar_reposo.visible = True
         
         Call modGeneradorCodigo.GenerarCodigoProducto
         Me.codigo_TextBox.Value = Codigo_Producto
@@ -201,9 +203,9 @@ Private Sub UserForm_Activate()
     End If
     
     If Me.modificar_registrar_textbox.Value = "M" Then
-        Me.boton_modificar_reposo.Visible = True
-        Me.boton_ingresar_reposo.Visible = False
-        Me.Label9.Visible = True
+        Me.boton_modificar_reposo.visible = True
+        Me.boton_ingresar_reposo.visible = False
+        Me.Label9.visible = True
         
         With Me
             .codigo_TextBox.Value = Range("B" & fila_a_modificar).Value

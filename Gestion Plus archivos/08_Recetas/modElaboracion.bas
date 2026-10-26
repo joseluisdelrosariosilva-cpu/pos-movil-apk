@@ -172,6 +172,7 @@ Public Sub RegistrarProductoElaborado(ByVal nombreReceta As String, _
     End With
     
     tbl.Sort.Apply
+    Call modGeneradorCodigo.ConfirmarCodigoProducto(codigoProducto)
     wsAlmacen.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
     
     ' Registrar en tablas auxiliares
@@ -230,7 +231,7 @@ Public Function CalcularCostoReceta(ByVal nombreReceta As String) As Double
     Dim fila As ListRow
     Dim ingrediente As String
     Dim cantidad As Double
-    Dim unidad As String
+    Dim Unidad As String
     Dim cantidadBase As Double
     Dim precioUnitario As Double
     Dim costoTotal As Double
@@ -247,10 +248,10 @@ Public Function CalcularCostoReceta(ByVal nombreReceta As String) As Double
         If fila.Range.Cells(1, COL_IR_RECETA).Value = nombreReceta Then
             ingrediente = fila.Range.Cells(1, COL_IR_INGREDIENTE).Value
             cantidad = fila.Range.Cells(1, COL_IR_CANTIDAD).Value
-            unidad = fila.Range.Cells(1, COL_IR_UNIDAD).Value
+            Unidad = fila.Range.Cells(1, COL_IR_UNIDAD).Value
 
             ' Convertir la cantidad a unidad base
-            cantidadBase = modConversor.ConvertirUnidad(ingrediente, cantidad, unidad)
+            cantidadBase = modConversor.ConvertirUnidad(ingrediente, cantidad, Unidad)
 
             ' Obtener precio por unidad base del ingrediente
             precioUnitario = modCalculosInventario.ObtenerPrecioPorUnidadBase(ingrediente)
@@ -313,7 +314,7 @@ Public Sub ActualizarRecetasPorIngrediente(ByVal nombreIngrediente As String)
 
     Set recetasAfectadas = modRecetas.ObtenerRecetasPorIngrediente(nombreIngrediente)
 
-    If recetasAfectadas.count > 0 Then
+    If recetasAfectadas.Count > 0 Then
         For Each receta In recetasAfectadas
             Call ActualizarCostosReceta(CStr(receta))
         Next receta
@@ -385,3 +386,4 @@ Public Sub AbastecerProductoElaborado(ByVal codigoProducto As String, _
     ' Registrar en tablas auxiliares
     Call AgregarFecha(Date)
 End Sub
+
