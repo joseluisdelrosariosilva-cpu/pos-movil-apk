@@ -1,16 +1,16 @@
 Attribute VB_Name = "modSeguridad"
 ' ============================================================================
-' M√ìDULO: modSeguridad
-' PROP√ìSITO: Funciones de protecci√≥n/desprotecci√≥n de libro y hojas.
-' Todas las contrase√±as se obtienen de modConstantes.
+' M”DULO: modSeguridad
+' PROP”SITO: Funciones de protecciÛn/desprotecciÛn de libro y hojas.
+' Todas las contraseÒas se obtienen de modConstantes.
 ' ============================================================================
 ' NOTA: Estas funciones reemplazan a protegerLibro/desprotegerLibro del
-'       antiguo M√≥dulo3 y a protegerHojas del ThisWorkbook.
+'       antiguo MÛdulo3 y a protegerHojas del ThisWorkbook.
 ' ============================================================================
 
 Option Explicit
 
-' --- PROTECCI√ìN DEL LIBRO --------------------------------------------------
+' --- PROTECCI”N DEL LIBRO --------------------------------------------------
 
 Public Sub ProtegerLibro()
     ThisWorkbook.Protect password:=PASS_LIBRO, structure:=True, Windows:=False
@@ -20,7 +20,7 @@ Public Sub DesprotegerLibro()
     ThisWorkbook.Unprotect password:=PASS_LIBRO
 End Sub
 
-' --- PROTECCI√ìN DE TODAS LAS HOJAS ----------------------------------------
+' --- PROTECCI”N DE TODAS LAS HOJAS ----------------------------------------
 
 Public Sub ProtegerTodasLasHojas()
     Dim ws As Worksheet
@@ -28,7 +28,7 @@ Public Sub ProtegerTodasLasHojas()
         ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
     Next ws
     
-    ' Protecci√≥n especial para Dashboard (permite filtros y tablas din√°micas)
+    ' ProtecciÛn especial para Dashboard (permite filtros y tablas din·micas)
     ThisWorkbook.Worksheets(HOJA_DASHBOARD).Protect _
         password:=PASS_HOJA, _
         contents:=True, _
@@ -38,7 +38,16 @@ Public Sub ProtegerTodasLasHojas()
         UserInterfaceOnly:=True
 End Sub
 
-' --- PROTECCI√ìN DE UNA HOJA ESPEC√çFICA ------------------------------------
+Public Sub DesprotegerTodasLasHojas()
+    Dim ws As Worksheet
+    On Error Resume Next
+    For Each ws In ThisWorkbook.Worksheets
+        ws.Unprotect password:=PASS_HOJA
+    Next ws
+    On Error GoTo 0
+End Sub
+
+' --- PROTECCI”N DE UNA HOJA ESPECÕFICA ------------------------------------
 
 Public Sub ProtegerHoja(ws As Worksheet)
     If Not ws Is Nothing Then
@@ -53,7 +62,7 @@ Public Sub DesprotegerHoja(ws As Worksheet)
 End Sub
 
 ' --- VERIFICAR PASSWORD DE ADMINISTRADOR ------------------------------------
-' Comprueba contra PASS_ADMIN y la contrase√±a almacenada en Hoja3.
+' Comprueba contra PASS_ADMIN y la contraseÒa almacenada en Hoja3.
 
 Public Function VerificarPasswordAdmin(ByVal password As String) As Boolean
     Dim storedPassword As String
@@ -66,7 +75,7 @@ Public Function VerificarPasswordAdmin(ByVal password As String) As Boolean
 End Function
 
 ' --- CAMBIAR PASSWORD DE ADMINISTRADOR --------------------------------------
-' Guarda la nueva contrase√±a en la celda A4 de Hoja3.
+' Guarda la nueva contraseÒa en la celda A4 de Hoja3.
 
 Public Sub CambiarPasswordAdmin(ByVal nuevaPassword As String)
     On Error Resume Next
@@ -93,18 +102,19 @@ Public Sub MostrarHojasAdministrativas(ByVal visible As Boolean)
         estadoVisibilidad = xlSheetVisible
         estadoBlanco = xlSheetVeryHidden
     Else
-        Exit Sub  ' No ocultar desde ac√° (se maneja desde el cierre)
+        Exit Sub  ' No ocultar desde ac· (se maneja desde el cierre)
     End If
     
     On Error Resume Next
-    ThisWorkbook.Sheets(HOJA_INGREDIENTES).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_RECETAS).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_GASTOS).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_FACTURAS).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_VENTAS).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_ALMACEN).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_DASHBOARD).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_TRABAJADORES).Visible = estadoVisibilidad
-    ThisWorkbook.Sheets(HOJA_BLANCO).Visible = estadoBlanco
+    'ThisWorkbook.Sheets(HOJA_INGREDIENTES).visible = estadoVisibilidad
+    'ThisWorkbook.Sheets(HOJA_RECETAS).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_GASTOS).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_FACTURAS).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_VENTAS).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_ALMACEN).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_DASHBOARD).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_TRABAJADORES).visible = estadoVisibilidad
+    ThisWorkbook.Sheets(HOJA_BLANCO).visible = estadoBlanco
     On Error GoTo 0
 End Sub
+

@@ -53,6 +53,19 @@ Public Function CodigoDisponible(ByVal codigo As String) As Boolean
     CodigoDisponible = Not ExisteCodigo(TablaInventario(), codigo)
 End Function
 
+' --- 5. RESETEAR (SOLO para preparar un libro nuevo) -----------------------
+' Deja el contador en 0 para que el proximo producto vuelva a Pr_00001.
+' Deshace a proposito la garantia de "el codigo nunca se recicla".
+' Llamalo SOLO despues de vaciar la tabla INVENTARIO.
+
+Public Sub ResetearContadorCodigos()
+    If GuardarUltimoNumero(0) Then Exit Sub
+
+    MsgBox "No se pudo reiniciar el contador de codigos en la hoja oculta """ & _
+           HOJA_HIDDEN & """ (celda " & CELDA_ULTIMO_CODIGO & ")." & vbCrLf & vbCrLf & _
+           "Revise la proteccion de la hoja.", vbExclamation, "Generador de codigos"
+End Sub
+
 ' --- LÓGICA INTERNA --------------------------------------------------------
 
 ' Sube el contador a MAX(contador, numeroMinimo, máximo real de la tabla).

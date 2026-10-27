@@ -174,140 +174,170 @@ End Sub
 
 ' ============================================================================
 ' Macro: ImportarDatosDesdeExcel
-' Proposito: Te permite seleccionar un Excel de la misma carpeta y reescribe
-'            los datos de TODAS las tablas (ListObjects) de TODAS las hojas
-'            del libro actual con los datos del archivo seleccionado.
+' Proposito: Reemplaza el contenido de cada tabla del libro actual con el de
+'            la tabla homonima del libro que elija el usuario.
+'            Reemplaza, no agrega. Las tablas locales que no existan en el
+'            origen no se tocan.
 ' ============================================================================
 
 Sub ImportarDatosDesdeExcel()
-    Dim srcFile   As Variant
-    Dim srcWB     As Workbook
-    Dim ws        As Worksheet
-    Dim lo        As ListObject
-    Dim srcLO     As ListObject
-    Dim importados As Long, omitidos As Long
-    
-    ' ---- 1. Seleccionar archivo origen ----
+    Dim srcFile    As Variant
+    Dim srcWB      As Workbook
+    Dim ws         As Worksheet
+    Dim lo         As ListObject
+    Dim srcLO      As ListObject
+    Dim importadas As Long
+    Dim omitidas   As Long
+    Dim incompat   As Long
+    Dim mensaje    As String
+
+    Const TITULO As String = "Importar datos desde otro libro"
+
+    ' ---- 1. Elegir el libro origen ----
     srcFile = Application.GetOpenFilename( _
-        FileFilter:="Archivos Excel (*.xls*),*.xls*", _
-        Title:="Seleccioná el archivo del cual importar los datos", _
+        FileFilter:="Libros de Excel (*.xls;*.xlsx;*.xlsm;*.xlsb), *.xls; *.xlsx; *.xlsm; *.xlsb", _
+        Title:="Selecciona el libro del cual importar los datos", _
         MultiSelect:=False)
-    
-    If srcFile = False Then
-        MsgBox "No seleccionaste ningún archivo. Operación cancelada.", _
-               vbInformation, "Importación cancelada"
+
+    If srcFile = False Then Exit Sub
+
+    If StrComp(ThisWorkbook.fullName, CStr(srcFile), vbTextCompare) = 0 Then
+        MsgBox "Seleccionaste el mismo libro que esta abierto. Elegi otro.", _
+               vbExclamation, TITULO
         Exit Sub
     End If
-    
-    ' ---- 2. Validar que no sea el mismo archivo ----
-    If ThisWorkbook.fullName = srcFile Then
-        MsgBox "Seleccionaste el mismo archivo que está en uso. Elegí otro.", _
-               vbExclamation, "Archivo inválido"
+
+    If MsgBox("Se van a REEMPLAZAR los datos de todas las tablas locales que " & _
+              "existan tambien en el libro elegido." & vbCrLf & vbCrLf & _
+              "Continuar?", vbYesNo + vbQuestion, TITULO) <> vbYes Then
         Exit Sub
     End If
-    
-    ' ---- 3. Abrir archivo origen (solo lectura) ----
+
+    ' ---- 2. Abrir el origen sin ejecutar sus macros ----
     On Error GoTo ErrorAbrir
-    Set srcWB = Workbooks.Open(srcFile, ReadOnly:=True, UpdateLinks:=False)
-    On Error GoTo 0
-    
-    ' ---- 4. Desproteger libro destino ----
-    On Error Resume Next
-    ThisWorkbook.Unprotect PASS_LIBRO
-    On Error GoTo 0
-    
-    ' ---- 5. Procesar cada tabla del libro DESTINO ----
-    importados = 0
-    omitidos = 0
-    
+
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
-    
+    Application.AutomationSecurity = msoAutomationSecurityForceDisable
+
+    Set srcWB = Workbooks.Open(Filename:=CStr(srcFile), ReadOnly:=True, UpdateLinks:=0)
+
+    On Error GoTo ErrorTrabajo
+
+    ' ---- 3. Desproteger el destino ----
+    modSeguridad.DesprotegerLibro
+    modSeguridad.DesprotegerTodasLasHojas
+
+    ' ---- 4. Copiar tabla por tabla ----
     For Each ws In ThisWorkbook.Worksheets
-        ' Desproteger hoja antes de modificar
-        On Error Resume Next
-        ws.Unprotect PASS_HOJA
-        On Error GoTo 0
-        
         For Each lo In ws.ListObjects
             Set srcLO = FindListObjectByName(srcWB, lo.name)
-            
+
             If srcLO Is Nothing Then
-                omitidos = omitidos + 1
+                omitidas = omitidas + 1
+            ElseIf CopyTableData(lo, srcLO) Then
+                importadas = importadas + 1
             Else
-                CopyTableData lo, srcLO
-                importados = importados + 1
+                incompat = incompat + 1
             End If
         Next lo
-        
-        ' Reproteger hoja (UserInterfaceOnly deja que el VBA siga modificando)
-        On Error Resume Next
-        ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
-        On Error GoTo 0
     Next ws
-    
-    ' Reproteger libro
+
+    ' Si trajiste el inventario de otro libro, el contador tiene que alcanzar
+    ' al codigo mas alto importado o el proximo producto lo repetiria.
+    modGeneradorCodigo.SincronizarContador
+
+    mensaje = "Importacion terminada." & vbCrLf & vbCrLf & _
+              "Tablas importadas: " & importadas & vbCrLf & _
+              "Tablas no encontradas en el origen: " & omitidas
+
+    If incompat > 0 Then
+        mensaje = mensaje & vbCrLf & _
+                  "Tablas con columnas distintas (no se tocaron): " & incompat
+    End If
+
+Salir:
     On Error Resume Next
-    ThisWorkbook.Protect password:=PASS_LIBRO
+    If Not srcWB Is Nothing Then
+        srcWB.Close SaveChanges:=False
+        Set srcWB = Nothing
+    End If
+    modSeguridad.ProtegerTodasLasHojas
+    modSeguridad.ProtegerLibro
+    RestaurarAplicacion
     On Error GoTo 0
-    
-    srcWB.Close SaveChanges:=False
-    
-    Application.ScreenUpdating = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.EnableEvents = True
-    
-    ' ---- 6. Mostrar resultado ----
-    MsgBox "Importación completada." & vbCrLf & vbCrLf & _
-           "? Tablas importadas: " & importados & vbCrLf & _
-           "? Tablas no encontradas en origen: " & omitidos, _
-           vbInformation, "Resultado de importación"
-    
+
+    If Len(mensaje) > 0 Then MsgBox mensaje, vbInformation, TITULO
     Exit Sub
 
 ErrorAbrir:
+    RestaurarAplicacion
     MsgBox "No se pudo abrir el archivo:" & vbCrLf & srcFile & vbCrLf & vbCrLf & _
-           "Error: " & Err.Description, vbCritical, "Error al abrir"
-    
-    Application.ScreenUpdating = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.EnableEvents = True
+           "Error: " & Err.Description, vbCritical, TITULO
+    Exit Sub
+
+ErrorTrabajo:
+    mensaje = ""
+    MsgBox "Error durante la importacion:" & vbCrLf & vbCrLf & _
+           Err.Description & vbCrLf & vbCrLf & _
+           "Revisa el libro antes de seguir usando.", vbCritical, TITULO
+    Resume Salir
 End Sub
 
-Private Sub CopyTableData(ByVal destLO As ListObject, ByVal srcLO As ListObject)
-    Dim vData As Variant
-    Dim r     As Long
-    
-    If srcLO.DataBodyRange Is Nothing Then
-        If Not destLO.DataBodyRange Is Nothing Then
-            destLO.DataBodyRange.ClearContents
+
+' Reemplaza el contenido de destLO con el de srcLO.
+' Devuelve False si no tienen las mismas columnas en el mismo orden, para no
+' escribir datos en columnas equivocadas.
+Private Function CopyTableData(ByVal destLO As ListObject, ByVal srcLO As ListObject) As Boolean
+    Dim vDatos As Variant
+    Dim i As Long
+    Dim j As Long
+
+    If srcLO.ListColumns.Count <> destLO.ListColumns.Count Then Exit Function
+
+    For j = 1 To srcLO.ListColumns.Count
+        If StrComp(Trim$(srcLO.ListColumns(j).name), _
+                   Trim$(destLO.ListColumns(j).name), vbTextCompare) <> 0 Then
+            Exit Function
         End If
-        Exit Sub
-    End If
-    
-    vData = srcLO.DataBodyRange.Value
-    
-    Do While destLO.ListRows.Count > 0
-        destLO.ListRows(destLO.ListRows.Count).Delete
-    Loop
-    
-    If Not IsEmpty(vData) Then
-        For r = 1 To UBound(vData, 1)
-            destLO.ListRows.Add
-        Next r
-        
-        destLO.DataBodyRange.Value = vData
-    End If
-End Sub
+    Next j
 
-Private Function FindListObjectByName(ByVal wb As Workbook, ByVal name As String) As ListObject
+    LimpiarTabla destLO
+
+    If srcLO.DataBodyRange Is Nothing Then
+        CopyTableData = True
+        Exit Function
+    End If
+
+    vDatos = srcLO.DataBodyRange.Value
+
+    ' Con una sola fila y una sola columna Excel devuelve un escalar, no una matriz.
+    If Not IsArray(vDatos) Then
+        destLO.ListRows.Add
+        destLO.DataBodyRange.Value = vDatos
+        CopyTableData = True
+        Exit Function
+    End If
+
+    For i = 1 To UBound(vDatos, 1)
+        destLO.ListRows.Add
+    Next i
+
+    destLO.DataBodyRange.Value = vDatos
+    CopyTableData = True
+End Function
+
+
+' Busca una tabla por nombre en todo el libro. Comparacion sin distinguir
+' mayusculas: VBA compara texto como binario y "INVENTARIO" <> "Inventario".
+Private Function FindListObjectByName(ByVal wb As Workbook, ByVal nombre As String) As ListObject
     Dim ws As Worksheet
     Dim lo As ListObject
-    
+
     For Each ws In wb.Worksheets
         For Each lo In ws.ListObjects
-            If lo.name = name Then
+            If StrComp(lo.name, nombre, vbTextCompare) = 0 Then
                 Set FindListObjectByName = lo
                 Exit Function
             End If
@@ -319,63 +349,71 @@ End Function
 ' Macro: LimpiarTodasLasTablas
 ' Proposito: Elimina TODAS las filas de datos de TODAS las tablas
 '            (ListObjects) de TODAS las hojas del libro actual.
-'            Las tablas quedan vacías, solo con los encabezados.
+'            Las tablas quedan vacias, solo con los encabezados.
 ' ============================================================================
 
 Sub LimpiarTodasLasTablas()
-    Dim ws  As Worksheet
-    Dim lo  As ListObject
+    Dim ws        As Worksheet
+    Dim lo        As ListObject
     Dim respuesta As VbMsgBoxResult
-    
-    ' ---- 1. Confirmar ----
-    respuesta = MsgBox("¿Estás seguro de que querés ELIMINAR TODOS LOS DATOS " & _
-                       "de TODAS las tablas?" & vbCrLf & vbCrLf & _
-                       "Las filas se borran por completo. Esta acción NO se puede deshacer.", _
-                       vbYesNo + vbExclamation, "Limpiar todas las tablas")
-    
-    If respuesta <> vbYes Then
-        MsgBox "Operación cancelada.", vbInformation, "Cancelado"
-        Exit Sub
-    End If
-    
-    ' ---- 2. Desproteger libro ----
-    On Error Resume Next
-    ThisWorkbook.Unprotect PASS_LIBRO
-    On Error GoTo 0
-    
-    ' ---- 3. Limpiar cada tabla ----
+    Dim tablas    As Long
+    Dim mensaje   As String
+
+    Const TITULO As String = "Limpiar todas las tablas"
+
+    respuesta = MsgBox( _
+        "Esto borra TODAS las filas de TODAS las tablas del libro:" & vbCrLf & _
+        "inventario, ingredientes, recetas, ventas, facturas, gastos," & vbCrLf & _
+        "trabajadores, fechas y productos unicos." & vbCrLf & vbCrLf & _
+        "Las tablas quedan solo con los encabezados." & vbCrLf & _
+        "NO se puede deshacer. Continuar?", _
+        vbYesNo + vbExclamation, TITULO)
+
+    If respuesta <> vbYes Then Exit Sub
+
+    On Error GoTo ErrorHandler
+
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
-    
+
+    modSeguridad.DesprotegerLibro
+    modSeguridad.DesprotegerTodasLasHojas
+
     For Each ws In ThisWorkbook.Worksheets
-        ' Desproteger hoja
-        On Error Resume Next
-        ws.Unprotect PASS_HOJA
-        On Error GoTo 0
-        
         For Each lo In ws.ListObjects
-            ' Eliminar todas las filas de datos de abajo hacia arriba
-            Do While lo.ListRows.Count > 0
-                lo.ListRows(lo.ListRows.Count).Delete
-            Loop
+            LimpiarTabla lo
+            tablas = tablas + 1
         Next lo
-        
-        ' Reproteger hoja
-        On Error Resume Next
-        ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
-        On Error GoTo 0
     Next ws
-    
-    ' Reproteger libro
+
+    ' Descomenta esta linea si ademas queres que el proximo producto sea Pr_00001.
+    modGeneradorCodigo.ResetearContadorCodigos
+
+    mensaje = "Listo: " & tablas & " tablas quedaron vacias (solo encabezados)."
+
+Salir:
     On Error Resume Next
-    ThisWorkbook.Protect password:=PASS_LIBRO
+    modSeguridad.ProtegerTodasLasHojas
+    modSeguridad.ProtegerLibro
+    RestaurarAplicacion
     On Error GoTo 0
-    
+
+    If Len(mensaje) > 0 Then MsgBox mensaje, vbInformation, TITULO
+    Exit Sub
+
+ErrorHandler:
+    mensaje = "Se produjo un error y la limpieza quedo a medias:" & vbCrLf & vbCrLf & _
+              Err.Description & vbCrLf & vbCrLf & _
+              "Revisa el libro antes de seguir usando."
+    Resume Salir
+End Sub
+
+
+Private Sub RestaurarAplicacion()
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
     Application.EnableEvents = True
-    
-    MsgBox "Todas las tablas quedaron vacías (solo encabezados).", vbInformation, "Completado"
+    Application.AutomationSecurity = msoAutomationSecurityByUI
+    Application.CutCopyMode = False
 End Sub
-
