@@ -1,8 +1,8 @@
 Attribute VB_Name = "modConversor"
 ' ============================================================================
-' M√ìDULO: modConversor
-' PROP√ìSITO: Conversi√≥n de unidades de medida para ingredientes.
-' Versi√≥n mejorada con soporte completo de unidades.
+' M”DULO: modConversor
+' PROP”SITO: ConversiÛn de unidades de medida para ingredientes.
+' VersiÛn mejorada con soporte completo de unidades.
 ' ============================================================================
 
 Option Explicit
@@ -38,14 +38,14 @@ Public Function ConvertirUnidad(ByVal ingrediente As String, _
     ConvertirUnidad = ConvertirABase(cantidad, unidadOrigen, unidadBase)
 End Function
 
-' --- CONVERTIR DE UNIDAD ORIGEN A UNIDAD BASE ESPEC√çFICA -------------------
+' --- CONVERTIR DE UNIDAD ORIGEN A UNIDAD BASE ESPECÕFICA -------------------
 
 Private Function ConvertirABase(ByVal cantidad As Double, _
                                  ByVal unidadOrigen As String, _
                                  ByVal unidadBase As String) As Double
     Dim cantidadEnBase As Double
     
-    ' Paso 1: Convertir a unidad com√∫n (gramos o mL)
+    ' Paso 1: Convertir a unidad com˙n (gramos o mL)
     Select Case LCase(Trim(unidadOrigen))
         ' Masa
         Case "kg"
@@ -71,7 +71,7 @@ Private Function ConvertirABase(ByVal cantidad As Double, _
             Exit Function
     End Select
     
-    ' Paso 2: Convertir de unidad com√∫n a la unidad base espec√≠fica
+    ' Paso 2: Convertir de unidad com˙n a la unidad base especÌfica
     Select Case LCase(Trim(unidadBase))
         ' Masa desde gramos
         Case "kg"
@@ -100,7 +100,7 @@ Private Function ConvertirABase(ByVal cantidad As Double, _
     End Select
 End Function
 
-' --- NORMALIZAR NOMBRE DE UNIDAD (evitar errores de may√∫sculas) ------------
+' --- NORMALIZAR NOMBRE DE UNIDAD (evitar errores de may˙sculas) ------------
 
 Public Function NormalizarUnidad(ByVal unidad As String) As String
     Dim u As String

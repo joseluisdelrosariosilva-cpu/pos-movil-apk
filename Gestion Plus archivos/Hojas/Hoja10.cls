@@ -9,7 +9,7 @@ Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = True
 ' ============================================================================
 ' HOJA10 (MIGRADO - Fase 2)
-' PROPOSITO: Eventos de la hoja "GestiÃ³n de Ingredientes".
+' PROPOSITO: Eventos de la hoja "Gestión de Ingredientes".
 ' - Color coding automatico en columna D (existencia vs stock minimo).
 ' - Recalculo de costos de recetas cuando cambia precio de ingrediente.
 ' Toda la logica de negocio delega en modulos reorganizados.

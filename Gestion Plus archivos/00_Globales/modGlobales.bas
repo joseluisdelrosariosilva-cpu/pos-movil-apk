@@ -1,39 +1,39 @@
 Attribute VB_Name = "modGlobales"
 ' ============================================================================
-' M√ìDULO: modGlobales
-' PROP√ìSITO: √önico punto de declaraci√≥n para todas las variables p√∫blicas
+' M”DULO: modGlobales
+' PROP”SITO: ⁄nico punto de declaraciÛn para todas las variables p˙blicas
 ' del proyecto Gestion Plus.
 ' ============================================================================
 ' INSTRUCCIONES:
-'   - No declarar variables Public fuera de este m√≥dulo.
-'   - Si necesitas una nueva variable global, agr√©gala aqu√≠ con un comentario
-'     que explique su prop√≥sito y d√≥nde se usa.
+'   - No declarar variables Public fuera de este mÛdulo.
+'   - Si necesitas una nueva variable global, agrÈgala aquÌ con un comentario
+'     que explique su propÛsito y dÛnde se usa.
 ' ============================================================================
 
 Option Explicit
 
-' --- NAVEGACI√ìN Y SELECCI√ìN ------------------------------------------------
+' --- NAVEGACI”N Y SELECCI”N ------------------------------------------------
 Public fila_sel          As Integer   ' Fila seleccionada en tabla (Trabajador_Mod)
 Public fila_a_modificar  As Integer   ' Fila activa para modificar (calling, formularios)
-Public seleccion_destino_calendario As Integer  ' Controla qu√© TextBox recibe la fecha del calendario
+Public seleccion_destino_calendario As Integer  ' Controla quÈ TextBox recibe la fecha del calendario
 
 ' --- TRABAJADORES ----------------------------------------------------------
 Public cargo             As String    ' Cargo del trabajador al pagar salario
 Public pago              As Double    ' Monto a pagar al trabajador
 
-' --- REPETICI√ìN EN FORMULARIOS --------------------------------------------
-Public repeticion        As Boolean   ' Repetici√≥n en facturaci√≥n
-Public repeticion2       As Boolean   ' Repetici√≥n en ingrediente nuevo
-Public repeticion3       As Boolean   ' Repetici√≥n en ingrediente modificar
+' --- REPETICI”N EN FORMULARIOS --------------------------------------------
+Public repeticion        As Boolean   ' RepeticiÛn en facturaciÛn
+Public repeticion2       As Boolean   ' RepeticiÛn en ingrediente nuevo
+Public repeticion3       As Boolean   ' RepeticiÛn en ingrediente modificar
 
-' --- VALIDACI√ìN DE CAMPOS VAC√çOS -----------------------------------------
-Public contador          As Integer   ' Contador de campos vac√≠os (ingresar_form)
-Public contador2         As Integer   ' Contador de campos vac√≠os (ingrediente nuevo)
-Public contador3         As Integer   ' Contador de campos vac√≠os (ingrediente existente)
+' --- VALIDACI”N DE CAMPOS VACÕOS -----------------------------------------
+Public contador          As Integer   ' Contador de campos vacÌos (ingresar_form)
+Public contador2         As Integer   ' Contador de campos vacÌos (ingrediente nuevo)
+Public contador3         As Integer   ' Contador de campos vacÌos (ingrediente existente)
 
 ' --- RECETAS --------------------------------------------------------------
 Public modoModificacion  As Boolean   ' True = modificando receta existente
 Public recetaAModificar  As String    ' Nombre de la receta a modificar
 
-' --- GENERACI√ìN DE C√ìDIGOS ------------------------------------------------
-Public Codigo_Producto   As String    ' √öltimo c√≥digo generado (formato "Pr_00001")
+' --- GENERACI”N DE C”DIGOS ------------------------------------------------
+Public Codigo_Producto   As String    ' ⁄ltimo cÛdigo generado (formato "Pr_00001")

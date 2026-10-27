@@ -2,31 +2,31 @@ Attribute VB_Name = "modConstantes"
 ' ============================================================================
 ' MODULO: modConstantes
 ' PROPOSITO: Centraliza TODAS las constantes del proyecto (nombres de hojas,
-' tablas, contrase帽as, rutas) para facilitar el mantenimiento.
+' tablas, contrase馻s, rutas) para facilitar el mantenimiento.
 ' ============================================================================
 ' INSTRUCCIONES:
-'   - NO hardcodees nombres de hojas, tablas o contrase帽as en el codigo.
+'   - NO hardcodees nombres de hojas, tablas o contrase馻s en el codigo.
 '   - Usa estas constantes SIEMPRE.
-'   - Si cambia una contrase帽a o nombre, solo se cambia aqui.
+'   - Si cambia una contrase馻 o nombre, solo se cambia aqui.
 ' ============================================================================
 
 Option Explicit
 
-' --- CONTRASE脩AS -----------------------------------------------------------
-' ATENCION: Estas contrase帽as estan expuestas en el codigo fuente.
+' --- CONTRASE袮S -----------------------------------------------------------
+' ATENCION: Estas contrase馻s estan expuestas en el codigo fuente.
 '           En una version futura, mover a un sistema mas seguro.
 Public Const PASS_HOJA      As String = "theSheetProtectpassisthe011rd"
 Public Const PASS_LIBRO     As String = "theBookProtectpassisthe010nd"
 Public Const PASS_ADMIN     As String = "859674"
 
 ' --- NOMBRES DE HOJAS ------------------------------------------------------
-Public Const HOJA_ALMACEN       As String = "Gesti贸n de Almac茅n"
+Public Const HOJA_ALMACEN       As String = "Gesti髇 de Almac閚"
 Public Const HOJA_VENTAS        As String = "Historial de ventas"
 Public Const HOJA_GASTOS        As String = "Historial de Gastos"
 Public Const HOJA_FACTURAS      As String = "Registro de facturas"
-Public Const HOJA_INGREDIENTES  As String = "Gesti贸n de Ingredientes"
-Public Const HOJA_TRABAJADORES  As String = "Gesti贸n de Trabajadores"
-Public Const HOJA_RECETAS       As String = "Elaboraci贸n de Productos"
+Public Const HOJA_INGREDIENTES  As String = "Gesti髇 de Ingredientes"
+Public Const HOJA_TRABAJADORES  As String = "Gesti髇 de Trabajadores"
+Public Const HOJA_RECETAS       As String = "Elaboraci髇 de Productos"
 Public Const HOJA_INGR_RECETA   As String = "Ingredientes"
 Public Const HOJA_FECHAS        As String = "Fechas"
 Public Const HOJA_DASHBOARD     As String = "Dashboard"
@@ -55,8 +55,8 @@ Public Const ARCHIVO_FLAG_ACTIVO   As String = "servidor_activo.flag"
 Public Const ARCHIVO_FLAG_DETENER  As String = "detener.flag"
 
 ' --- COLUMNAS DE TABLAS (mapeo) --------------------------------------------
-' TBL_INVENTARIO: Gesti贸n de Almac茅n
-'   1=C贸digo, 2=Nombre, 3=Fecha, 4=Cant.Inicial, 5=Cant.Actual,
+' TBL_INVENTARIO: Gesti髇 de Almac閚
+'   1=C骴igo, 2=Nombre, 3=Fecha, 4=Cant.Inicial, 5=Cant.Actual,
 '   6=PrecioVenta, 7=PrecioCosto, 8=Fondo, 9=IngresoEsp, 10=GananciaEsp
 Public Const COL_INV_CODIGO      As Long = 1
 Public Const COL_INV_NOMBRE      As Long = 2
@@ -70,23 +70,23 @@ Public Const COL_INV_INGRESO     As Long = 9
 Public Const COL_INV_GANANCIA    As Long = 10
 
 ' TBL_GASTOS: Historial de Gastos
-'   1=Fecha, 2=Categor铆a, 3=Descripci贸n, 4=Monto
+'   1=Fecha, 2=Categor韆, 3=Descripci髇, 4=Monto
 Public Const COL_GAS_FECHA       As Long = 1
 Public Const COL_GAS_CATEGORIA   As Long = 2
 Public Const COL_GAS_DESCRIPCION As Long = 3
 Public Const COL_GAS_MONTO       As Long = 4
 
-' TBL_INGREDIENTES: Gesti贸n de Ingredientes
-'   1=Nombre, 2=C贸digo/Alterno, 3=Stock, 4=UnidadBase, 5=Precio, 6=Fondo, 7=Monto
+' TBL_INGREDIENTES: Gesti髇 de Ingredientes
+'   1=Nombre, 2=C骴igo/Alterno, 3=Stock, 4=UnidadBase, 5=Precio, 6=Fondo, 7=Monto
 Public Const COL_ING_NOMBRE       As Long = 1
 Public Const COL_ING_STOCK        As Long = 3
 Public Const COL_ING_UNIDAD_BASE  As Long = 4
 Public Const COL_ING_PRECIO       As Long = 5
 Public Const COL_ING_FONDO        As Long = 6
 
-' TBL_RECETAS: Elaboraci贸n de Productos
-'   1=Receta, 2=Lote, 3=Inversi贸n/Lote, 4=Precio/Lote,
-'   5=Ganancia/Lote, 6=Inversi贸n/Unidad, 7=Precio/Unidad, 8=Ganancia/Unidad
+' TBL_RECETAS: Elaboraci髇 de Productos
+'   1=Receta, 2=Lote, 3=Inversi髇/Lote, 4=Precio/Lote,
+'   5=Ganancia/Lote, 6=Inversi髇/Unidad, 7=Precio/Unidad, 8=Ganancia/Unidad
 Public Const COL_REC_NOMBRE       As Long = 1
 Public Const COL_REC_LOTE         As Long = 2
 Public Const COL_REC_INV_LOTE     As Long = 3
@@ -103,15 +103,15 @@ Public Const COL_IR_INGREDIENTE  As Long = 2
 Public Const COL_IR_CANTIDAD     As Long = 3
 Public Const COL_IR_UNIDAD       As Long = 4
 
-' TBL_TRABAJADORES: Gesti贸n de Trabajadores
-'   1=Nombre, 2=Cargo, 3=Porcentaje Salario, 4=Salario M铆nimo
+' TBL_TRABAJADORES: Gesti髇 de Trabajadores
+'   1=Nombre, 2=Cargo, 3=Porcentaje Salario, 4=Salario M韓imo
 Public Const COL_TRAB_NOMBRE      As Long = 1
 Public Const COL_TRAB_CARGO       As Long = 2
 Public Const COL_TRAB_PORCENTAJE  As Long = 3
 Public Const COL_TRAB_SAL_MIN     As Long = 4
 
-' --- CATEGOR脥AS DE GASTOS --------------------------------------------------
+' --- CATEGOR虯S DE GASTOS --------------------------------------------------
 Public Const CAT_FIJO        As String = "Fijo"
 Public Const CAT_VARIABLE    As String = "Variable"
-Public Const CAT_INVERSION   As String = "Inversi贸n"
+Public Const CAT_INVERSION   As String = "Inversi髇"
 Public Const CAT_MERMA       As String = "Merma"

@@ -18,8 +18,8 @@ Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: Trabajador_Mod
-' PROPÃ“SITO:  Interfaz para modificar un trabajador existente.
-'              Toda la lÃ³gica de negocio delega en modTrabajadores.
+' PROPÓSITO:  Interfaz para modificar un trabajador existente.
+'              Toda la lógica de negocio delega en modTrabajadores.
 ' ============================================================================
 
 Private Sub Ingresar_Click()
@@ -56,19 +56,19 @@ Private Sub Btn_Active_Click()
     End If
     
     If Trim(Me.Txt_sal_min.Value) = "" Then
-        MsgBox "Por favor ingrese un salario mÃ­nimo", vbExclamation, "Campo requerido"
+        MsgBox "Por favor ingrese un salario mínimo", vbExclamation, "Campo requerido"
         Me.Txt_sal_min.SetFocus
         Exit Sub
     End If
     
     If Not IsNumeric(Me.Txt_sal.Value) Or Me.Txt_sal.Value < 0 Or Me.Txt_sal.Value > 100 Then
-        MsgBox "Por favor ingrese un valor numÃ©rico entre 0 y 100 en el Salario %", vbExclamation, "Porcentaje invÃ¡lido"
+        MsgBox "Por favor ingrese un valor numérico entre 0 y 100 en el Salario %", vbExclamation, "Porcentaje inválido"
         Me.Txt_sal.SetFocus
         Exit Sub
     End If
     
     If Not IsNumeric(Me.Txt_sal_min.Value) Or Me.Txt_sal_min.Value < 0 Then
-        MsgBox "Por favor ingrese un valor numÃ©rico positivo en el salario mÃ­nimo", vbExclamation, "Valor invÃ¡lido"
+        MsgBox "Por favor ingrese un valor numérico positivo en el salario mínimo", vbExclamation, "Valor inválido"
         Me.Txt_sal_min.SetFocus
         Exit Sub
     End If

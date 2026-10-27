@@ -241,7 +241,7 @@ Private Sub Lotes_KeyPress(ByVal KeyAscii As MSForms.ReturnInteger)
     Call modValidacionNumerica.SoloNumeros(KeyAscii)
 End Sub
 
-' --- ACTUALIZAR C√ÅLCULOS AL CAMBIAR PRECIO DE VENTA -------------------------
+' --- ACTUALIZAR C¡LCULOS AL CAMBIAR PRECIO DE VENTA -------------------------
 Private Sub Precio_venta_Change()
     If Me.Recetas.Value <> "" And Me.Lotes.Value <> "" And IsNumeric(Me.Lotes.Value) Then
         Dim ingresoEsperado As Double

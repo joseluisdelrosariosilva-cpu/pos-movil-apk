@@ -18,8 +18,8 @@ Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: Gasto_Form
-' PROP脫SITO:  Interfaz para registrar un nuevo gasto variable.
-'              Toda la l贸gica de negocio delega en m贸dulos reorganizados.
+' PROP覵ITO:  Interfaz para registrar un nuevo gasto variable.
+'              Toda la l骻ica de negocio delega en m骴ulos reorganizados.
 ' ============================================================================
 
 Private Sub Ingresar_Click()
@@ -52,24 +52,24 @@ Private Sub Btn_Active_Click()
     End If
     
     If Trim(Me.Txt_Descripcion.Value) = "" Then
-        MsgBox "Por favor ingrese una descripci贸n", vbExclamation, "Campo requerido"
+        MsgBox "Por favor ingrese una descripci髇", vbExclamation, "Campo requerido"
         Me.Txt_Descripcion.SetFocus
         Exit Sub
     End If
     
     If Not IsDate(Me.Txt_Fecha.Value) Then
-        MsgBox "Por favor ingrese una fecha v谩lida", vbExclamation, "Fecha inv谩lida"
+        MsgBox "Por favor ingrese una fecha v醠ida", vbExclamation, "Fecha inv醠ida"
         Me.Txt_Fecha.SetFocus
         Exit Sub
     End If
     
     If Not IsNumeric(Me.Txt_Monto.Value) Or Me.Txt_Monto.Value < 0 Then
-        MsgBox "Por favor ingrese un valor num茅rico positivo en el monto", vbExclamation, "Monto inv谩lido"
+        MsgBox "Por favor ingrese un valor num閞ico positivo en el monto", vbExclamation, "Monto inv醠ido"
         Me.Txt_Monto.SetFocus
         Exit Sub
     End If
     
-    ' Delegar inserci贸n a m贸dulos reorganizados
+    ' Delegar inserci髇 a m骴ulos reorganizados
     Call modAgregarRegistros.AgregarGasto( _
         CDate(Me.Txt_Fecha.Value), _
         CAT_VARIABLE, _

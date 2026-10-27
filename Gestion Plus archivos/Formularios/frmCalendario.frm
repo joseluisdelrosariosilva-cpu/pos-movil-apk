@@ -864,7 +864,7 @@ Private Sub lblHoy_Click()
     modCalendario.UnClickEnHoyEs
 End Sub
 
-Private Sub spbAÃ±o_Change()
+Private Sub spbAño_Change()
     modCalendario.CambioDeAno
 End Sub
 

@@ -1,15 +1,15 @@
 Attribute VB_Name = "modTrabajadores"
 ' ============================================================================
-' M脫DULO: modTrabajadores
-' PROP脫SITO: Gesti贸n de trabajadores - pago de salarios y llamadas a
+' M覦ULO: modTrabajadores
+' PROP覵ITO: Gesti髇 de trabajadores - pago de salarios y llamadas a
 ' formularios relacionados.
 ' ============================================================================
 
 Option Explicit
 
 ' --- PAGAR SALARIO A TRABAJADOR -------------------------------------------
-' Calcula el monto a pagar basado en el % de comisi贸n sobre ventas
-' o el salario m铆nimo, lo que sea mayor.
+' Calcula el monto a pagar basado en el % de comisi髇 sobre ventas
+' o el salario m韓imo, lo que sea mayor.
 
 Public Sub PagarTrabajador()
     Dim tbl_sel As ListObject
@@ -27,21 +27,21 @@ Public Sub PagarTrabajador()
     
     Set selected_row = tbl_sel.ListRows(selected.Row - tbl_sel.HeaderRowRange.Row)
     
-    ' Calcular pago: max(comisi贸n, salario m铆nimo)
-    ' Columna 3 = % comisi贸n, Columna 4 = Salario m铆nimo
+    ' Calcular pago: max(comisi髇, salario m韓imo)
+    ' Columna 3 = % comisi髇, Columna 4 = Salario m韓imo
     ' J5 en Historial de ventas = Total de ventas (asumido)
     Dim totalVentas As Double
     totalVentas = ThisWorkbook.Worksheets(HOJA_VENTAS).Range("J5").Value
     
     If totalVentas * selected_row.Range(3).Value < selected_row.Range(4).Value Then
-        pago = selected_row.Range(4).Value  ' Salario m铆nimo
+        pago = selected_row.Range(4).Value  ' Salario m韓imo
     Else
-        pago = totalVentas * selected_row.Range(3).Value  ' Comisi贸n
+        pago = totalVentas * selected_row.Range(3).Value  ' Comisi髇
     End If
     
-    cargo = selected_row.Range(2).Value  ' Cargo para la descripci贸n del gasto
+    cargo = selected_row.Range(2).Value  ' Cargo para la descripci髇 del gasto
     
-    response = MsgBox("驴Desea pagar al trabajador: " & selected_row.Range(1).Value & "?" & vbCrLf & _
+    response = MsgBox("緿esea pagar al trabajador: " & selected_row.Range(1).Value & "?" & vbCrLf & _
                       "A pagar: " & pago & " CUP", _
                       vbYesNo + vbQuestion, "Confirmar pago")
     
@@ -52,7 +52,7 @@ Public Sub PagarTrabajador()
     End If
 End Sub
 
-' --- MODIFICAR TRABAJADOR (desde bot贸n en hoja) ----------------------------
+' --- MODIFICAR TRABAJADOR (desde bot髇 en hoja) ----------------------------
 
 Public Sub ModificarTrabajador()
     Dim ws As Worksheet
@@ -72,8 +72,8 @@ Public Sub ModificarTrabajador()
     
     Set selected_row = tbl_sel.ListRows(selected.Row - tbl_sel.HeaderRowRange.Row)
     
-    response = MsgBox("驴Desea modificar el trabajador: " & selected_row.Range(1).Value & "?", _
-                      vbYesNo + vbQuestion, "Confirmar modificaci贸n")
+    response = MsgBox("緿esea modificar el trabajador: " & selected_row.Range(1).Value & "?", _
+                      vbYesNo + vbQuestion, "Confirmar modificaci髇")
     
     If response = vbYes Then
         fila_sel = selected_row.Index

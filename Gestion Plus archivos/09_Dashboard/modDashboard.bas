@@ -1,7 +1,7 @@
 Attribute VB_Name = "modDashboard"
 ' ============================================================================
-' MÃ“DULO: modDashboard
-' PROPÃ“SITO: Refresco del Dashboard con datos actualizados.
+' MÓDULO: modDashboard
+' PROPÓSITO: Refresco del Dashboard con datos actualizados.
 ' ============================================================================
 
 Option Explicit
@@ -30,7 +30,7 @@ ErrorHandler:
     MsgBox "Error al refrescar Dashboard: " & Err.Description, vbCritical
 End Sub
 
-' --- VERIFICAR EXPIRACIÃ“N (fecha en Hidden) --------------------------------
+' --- VERIFICAR EXPIRACIÓN (fecha en Hidden) --------------------------------
 ' Si la fecha en Hidden.A1 ha pasado, muestra un mensaje.
 
 Public Function VerificarExpiracion() As Boolean
@@ -46,7 +46,7 @@ Public Function VerificarExpiracion() As Boolean
     On Error GoTo ErrorHandler
     
     If fechaExpiracion > 0 And fechaExpiracion < Date Then
-        MsgBox "La versiÃ³n de prueba ha expirado.", vbExclamation
+        MsgBox "La versión de prueba ha expirado.", vbExclamation
         VerificarExpiracion = True
     Else
         VerificarExpiracion = False
@@ -75,7 +75,7 @@ Public Sub OcultarHojasSistema()
 End Sub
 
 ' --- ACTUALIZAR FORMAS DEL DASHBOARD CON VALORES DE PIVOT TABLES ------------
-' Se ejecuta cada vez que se actualiza una tabla dinÃ¡mica en el Dashboard.
+' Se ejecuta cada vez que se actualiza una tabla dinámica en el Dashboard.
 ' Actualiza las formas (Shape_Ingresos, Shape_Gastos, etc.) con los totales.
 
 Public Sub ActualizarFormasDashboard()
@@ -127,6 +127,6 @@ MargenCero:
     ws.Shapes("Shape_Margen").TextFrame.Characters.Text = "Margen: " & vbCrLf & "0 %"
     Resume Next
 ErrorHandler:
-    ' Silenciar errores de shapes faltantes o pivots vacÃ­os
+    ' Silenciar errores de shapes faltantes o pivots vacíos
     Resume Next
 End Sub

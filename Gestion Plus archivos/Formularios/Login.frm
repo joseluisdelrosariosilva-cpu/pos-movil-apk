@@ -18,13 +18,13 @@ Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: Login
-' PROPÃ“SITO:  Acceso de administrador con verificaciÃ³n de contraseÃ±a.
-'              Toda la lÃ³gica delega en modSeguridad.
+' PROPÓSITO:  Acceso de administrador con verificación de contraseña.
+'              Toda la lógica delega en modSeguridad.
 ' ============================================================================
 
 Private Sub boton_aceptar_covered_Click()
     If Me.pass_TextBox.Value = "" Then
-        MsgBox "Por favor ingrese la contraseÃ±a para continuar", vbExclamation
+        MsgBox "Por favor ingrese la contraseña para continuar", vbExclamation
         Exit Sub
     End If
     
@@ -40,7 +40,7 @@ Private Sub boton_aceptar_covered_Click()
         Unload Me
         Unload facturacion
     Else
-        MsgBox "ContraseÃ±a incorrecta", vbCritical
+        MsgBox "Contraseña incorrecta", vbCritical
     End If
 End Sub
 
@@ -48,8 +48,8 @@ Private Sub boton_cambiar_covered_Click()
     Dim inputCheckPassword As Variant
     Dim newCheckPassword As Variant
     
-    ' Primer InputBox - contraseÃ±a actual
-    inputCheckPassword = Application.InputBox("Ingrese la contraseÃ±a actual", "Cambio de contraseÃ±a", Type:=2)
+    ' Primer InputBox - contraseña actual
+    inputCheckPassword = Application.InputBox("Ingrese la contraseña actual", "Cambio de contraseña", Type:=2)
     
     If inputCheckPassword = False Then
         Me.boton_cambiar_reposo.ZOrder msoBringToFront
@@ -57,17 +57,17 @@ Private Sub boton_cambiar_covered_Click()
         Exit Sub
     End If
     
-    ' Validar contraseÃ±a actual
+    ' Validar contraseña actual
     If modSeguridad.VerificarPasswordAdmin(CStr(inputCheckPassword)) Then
-        ' Segundo InputBox - nueva contraseÃ±a
-        newCheckPassword = Application.InputBox("Ingrese la nueva contraseÃ±a", "Cambio de contraseÃ±a", Type:=2)
+        ' Segundo InputBox - nueva contraseña
+        newCheckPassword = Application.InputBox("Ingrese la nueva contraseña", "Cambio de contraseña", Type:=2)
         
         If newCheckPassword = False Then Exit Sub
         
         Call modSeguridad.CambiarPasswordAdmin(CStr(newCheckPassword))
-        MsgBox "La contraseÃ±a se cambiÃ³ correctamente", vbInformation
+        MsgBox "La contraseña se cambió correctamente", vbInformation
     Else
-        MsgBox "ContraseÃ±a incorrecta", vbCritical
+        MsgBox "Contraseña incorrecta", vbCritical
     End If
 End Sub
 

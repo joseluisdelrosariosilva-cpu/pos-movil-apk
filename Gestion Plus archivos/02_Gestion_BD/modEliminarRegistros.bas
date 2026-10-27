@@ -1,13 +1,13 @@
 Attribute VB_Name = "modEliminarRegistros"
 ' ============================================================================
-' MÃ“DULO: modEliminarRegistros
-' PROPÃ“SITO: ConsolidaciÃ³n de todas las funciones de eliminaciÃ³n de
+' MÓDULO: modEliminarRegistros
+' PROPÓSITO: Consolidación de todas las funciones de eliminación de
 ' registros en las tablas del sistema.
 ' ============================================================================
 
 Option Explicit
 
-' --- ELIMINAR FILA DE TABLA POR SELECCIÃ“N (genÃ©rico) -----------------------
+' --- ELIMINAR FILA DE TABLA POR SELECCIÓN (genérico) -----------------------
 ' Helper para eliminar una fila seleccionada de cualquier tabla.
 
 Private Function PrepararEliminacion(tbl As ListObject) As ListRow
@@ -42,8 +42,8 @@ Public Sub EliminarGasto()
         Exit Sub
     End If
     
-    response = MsgBox("Â¿Desea eliminar el gasto: " & selected_row.Range(COL_GAS_DESCRIPCION).Value & "?", _
-                      vbYesNo + vbQuestion, "Confirmar eliminaciÃ³n")
+    response = MsgBox("¿Desea eliminar el gasto: " & selected_row.Range(COL_GAS_DESCRIPCION).Value & "?", _
+                      vbYesNo + vbQuestion, "Confirmar eliminación")
     
     If response = vbYes Then
         ws.Unprotect password:=PASS_HOJA
@@ -70,8 +70,8 @@ Public Sub EliminarTrabajador()
         Exit Sub
     End If
     
-    response = MsgBox("Â¿Desea eliminar el trabajador: " & selected_row.Range(1).Value & "?", _
-                      vbYesNo + vbQuestion, "Confirmar eliminaciÃ³n")
+    response = MsgBox("¿Desea eliminar el trabajador: " & selected_row.Range(1).Value & "?", _
+                      vbYesNo + vbQuestion, "Confirmar eliminación")
     
     If response = vbYes Then
         ws.Unprotect password:=PASS_HOJA
@@ -98,8 +98,8 @@ Public Sub EliminarIngrediente()
         Exit Sub
     End If
     
-    response = MsgBox("Â¿Desea eliminar el ingrediente: " & selected_row.Range(1).Value & "?", _
-                      vbYesNo + vbQuestion, "Confirmar eliminaciÃ³n")
+    response = MsgBox("¿Desea eliminar el ingrediente: " & selected_row.Range(1).Value & "?", _
+                      vbYesNo + vbQuestion, "Confirmar eliminación")
     
     If response = vbYes Then
         ws.Unprotect password:=PASS_HOJA
@@ -118,13 +118,13 @@ Public Sub EliminarProducto()
     fila_a_eliminar = Application.ActiveCell.Row
     
     If fila_a_eliminar > 4 And Range("B" & fila_a_eliminar) <> "" Then
-        respuesta = MsgBox("Â¿EstÃ¡ seguro que desea eliminar el producto seleccionado?", vbYesNo)
+        respuesta = MsgBox("¿Está seguro que desea eliminar el producto seleccionado?", vbYesNo)
         
         If respuesta = 6 Then
             Range("B" & fila_a_eliminar).EntireRow.Delete
         End If
     Else
-        MsgBox "Seleccione la lÃ­nea con el producto que desea eliminar"
+        MsgBox "Seleccione la línea con el producto que desea eliminar"
     End If
 End Sub
 
@@ -170,9 +170,9 @@ Public Sub EliminarReceta()
     
     nombreReceta = tblRecetas.DataBodyRange.Cells(filaTabla, 1).Value
     
-    respuesta = MsgBox("Â¿EstÃ¡ seguro que desea eliminar la receta: '" & nombreReceta & "'?" & vbCrLf & _
-                       "Esta acciÃ³n no se puede deshacer.", _
-                       vbYesNo + vbExclamation + vbDefaultButton2, "Confirmar eliminaciÃ³n")
+    respuesta = MsgBox("¿Está seguro que desea eliminar la receta: '" & nombreReceta & "'?" & vbCrLf & _
+                       "Esta acción no se puede deshacer.", _
+                       vbYesNo + vbExclamation + vbDefaultButton2, "Confirmar eliminación")
     
     If respuesta = vbNo Then Exit Sub
     

@@ -2,7 +2,7 @@ Attribute VB_Name = "modCalendario"
 ' ============================================================================
 ' MODULO: modCalendario
 ' PROPOSITO: Logica del formulario calendario. Controla la navegacion de
-' meses/aÃ±os, carga de dias, marcado/desmarcado y envio de fecha a los
+' meses/años, carga de dias, marcado/desmarcado y envio de fecha a los
 ' formularios segun seleccion_destino_calendario.
 ' Reemplaza a ModuloCalendario.bas.
 ' ============================================================================
@@ -71,7 +71,7 @@ Public Sub InicializaFormularioCalendario()
         .AddItem 12: .List(11, 1) = "diciembre"
     End With
     frmCalendario.cboMes.ListIndex = VBA.Month(VBA.Date) - 1
-    frmCalendario.spbAÃ±o.Value = VBA.Year(VBA.Date)
+    frmCalendario.spbAño.Value = VBA.Year(VBA.Date)
     frmCalendario.lblAno.Caption = VBA.Year(VBA.Date)
     Dim Ano As Long, mes As Long
     Ano = VBA.Year(VBA.Date)
@@ -107,10 +107,10 @@ Public Sub CambioDeMes()
     End If
     SenalCambioMes = SenalCambioMes + 1
 End Sub
-' --- CAMBIO DE AÃ±O ----------------------------------------------------------
+' --- CAMBIO DE AñO ----------------------------------------------------------
 Public Sub CambioDeAno()
     Dim MesEnElCombo As Long, AnoEnElLabel As Long
-    frmCalendario.lblAno.Caption = frmCalendario.spbAÃ±o.Value
+    frmCalendario.lblAno.Caption = frmCalendario.spbAño.Value
     MesEnElCombo = VBA.CLng(frmCalendario.cboMes.Value)
     AnoEnElLabel = VBA.CLng(frmCalendario.lblAno.Caption)
     Call DesmarcarDias: Call CargarLosDias(AnoEnElLabel, MesEnElCombo)
@@ -123,8 +123,8 @@ Public Sub UnClickEnHoyEs()
     Ano = VBA.CLng(VBA.Year(FechaActual))
     frmCalendario.lblAno.Caption = Ano
     frmCalendario.cboMes.ListIndex = mes - 1
-    frmCalendario.spbAÃ±o.Value = Ano
-    frmCalendario.spbAÃ±o.SetFocus
+    frmCalendario.spbAño.Value = Ano
+    frmCalendario.spbAño.SetFocus
     Call DesmarcarDias: Call CargarLosDias(Ano, mes)
 End Sub
 ' --- SALIR CON TECLA ESCAPE -------------------------------------------------

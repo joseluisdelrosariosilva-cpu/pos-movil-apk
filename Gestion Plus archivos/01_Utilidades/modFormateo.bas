@@ -1,12 +1,12 @@
 Attribute VB_Name = "modFormateo"
 ' ============================================================================
-' MÃ“DULO: modFormateo
-' PROPÃ“SITO: Funciones auxiliares de formateo de valores numÃ©ricos y fechas.
+' MÓDULO: modFormateo
+' PROPÓSITO: Funciones auxiliares de formateo de valores numéricos y fechas.
 ' ============================================================================
 
 Option Explicit
 
-' --- FORMATEAR NÃšMERO ------------------------------------------------------
+' --- FORMATEAR NÚMERO ------------------------------------------------------
 
 Public Function FormatearNumero(valor As Variant) As String
     If IsNumeric(valor) Then
@@ -26,7 +26,7 @@ Public Function FormatearFecha(fecha As Variant) As String
     End If
 End Function
 
-' --- CONVERTIR A DOUBLE (0 si vacÃ­o) --------------------------------------
+' --- CONVERTIR A DOUBLE (0 si vacío) --------------------------------------
 
 Public Function ToDoubleOrZero(ByVal v As Variant) As Double
     On Error GoTo ErrorHandler
@@ -48,8 +48,8 @@ Public Function ToDoubleOrZero(ByVal v As Variant) As Double
         Exit Function
     End If
     
-    Err.Raise vbObjectError + 3201, "ToDoubleOrZero", "Valor no numÃ©rico: " & CStr(v)
+    Err.Raise vbObjectError + 3201, "ToDoubleOrZero", "Valor no numérico: " & CStr(v)
     
 ErrorHandler:
-    Err.Raise vbObjectError + 3299, "ToDoubleOrZero", "No se pudo convertir a nÃºmero: " & CStr(v)
+    Err.Raise vbObjectError + 3299, "ToDoubleOrZero", "No se pudo convertir a número: " & CStr(v)
 End Function

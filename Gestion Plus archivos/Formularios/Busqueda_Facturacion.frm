@@ -18,13 +18,13 @@ Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: Busqueda_Facturacion
-' PROPÃ“SITO:  BÃºsqueda de facturas por rango de fechas y descripciÃ³n.
-'              Toda la lÃ³gica de negocio delega en modBusquedas.
+' PROPÓSITO:  Búsqueda de facturas por rango de fechas y descripción.
+'              Toda la lógica de negocio delega en modBusquedas.
 ' ============================================================================
 
 Private filasOriginales As Collection
 
-' --- BÃšSQUEDA PRINCIPAL ------------------------------------------------------
+' --- BÚSQUEDA PRINCIPAL ------------------------------------------------------
 Private Sub Btn_Active_Click()
     Dim fechaInicio As Date
     Dim fechaFin As Date
@@ -51,7 +51,7 @@ Private Sub Btn_Active_Click()
     End If
     
     Me.lstResultados.Clear
-    MsgBox "No se encontraron facturas para el perÃ­odo seleccionado.", vbInformation, "Sin resultados"
+    MsgBox "No se encontraron facturas para el período seleccionado.", vbInformation, "Sin resultados"
 End Sub
 
 ' --- DOBLE CLIC: NAVEGAR A LA FILA ORIGINAL ----------------------------------
@@ -68,7 +68,7 @@ Private Sub lstResultados_DblClick(ByVal Cancel As MSForms.ReturnBoolean)
     Unload Me
 End Sub
 
-' --- INICIALIZACIÃ“N ----------------------------------------------------------
+' --- INICIALIZACIÓN ----------------------------------------------------------
 Private Sub UserForm_Initialize()
     Dim ws As Worksheet
     Dim tbl As ListObject

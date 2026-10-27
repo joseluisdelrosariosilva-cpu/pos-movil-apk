@@ -1,14 +1,14 @@
 Attribute VB_Name = "modBusquedas"
 ' ============================================================================
-' MÃ“DULO: modBusquedas
-' PROPÃ“SITO: Funciones de bÃºsqueda y verificaciÃ³n de repeticiones.
-'            VersiÃ³n desacoplada: recibe controles como parÃ¡metros.
+' MÓDULO: modBusquedas
+' PROPÓSITO: Funciones de búsqueda y verificación de repeticiones.
+'            Versión desacoplada: recibe controles como parámetros.
 ' ============================================================================
 
 Option Explicit
 
-' --- COMPROBAR REPETICIÃ“N EN FACTURACIÃ“N (listbox) -------------------------
-' Recibe el cÃ³digo a verificar y el listbox como parÃ¡metros.
+' --- COMPROBAR REPETICIÓN EN FACTURACIÓN (listbox) -------------------------
+' Recibe el código a verificar y el listbox como parámetros.
 
 Public Function ComprobarRepeticionFacturacion(ByVal codigo As String, _
                                                 ByRef lstProductos As MSForms.ListBox) As Boolean
@@ -24,7 +24,7 @@ Public Function ComprobarRepeticionFacturacion(ByVal codigo As String, _
     Next i
 End Function
 
-' --- COMPROBAR REPETICIÃ“N EN INGREDIENTE NUEVO ----------------------------
+' --- COMPROBAR REPETICIÓN EN INGREDIENTE NUEVO ----------------------------
 
 Public Sub ComprobarRepeticionIngredienteNuevo()
     Dim i As Integer
@@ -46,8 +46,8 @@ Public Sub ComprobarRepeticionIngredienteNuevo()
     Next i
 End Sub
 
-' --- COMPROBAR REPETICIÃ“N EN INGREDIENTE MODIFICAR ------------------------
-' Permite usar el mismo nombre del elemento que se estÃ¡ modificando.
+' --- COMPROBAR REPETICIÓN EN INGREDIENTE MODIFICAR ------------------------
+' Permite usar el mismo nombre del elemento que se está modificando.
 
 Public Sub ComprobarRepeticionIngredienteModificar()
     Dim i As Integer
@@ -74,7 +74,7 @@ Public Sub ComprobarRepeticionIngredienteModificar()
 End Sub
 
 ' --- CARGAR TODOS LOS PRODUCTOS EN LISTBOX ----------------------------------
-' Llena un listbox con todos los productos del inventario (col: CÃ³digo, Nombre, Disponibilidad, Precio).
+' Llena un listbox con todos los productos del inventario (col: Código, Nombre, Disponibilidad, Precio).
 
 Public Sub CargarTodosLosProductos(ByRef lstResultados As MSForms.ListBox)
     Dim wsAlmacen As Worksheet
@@ -135,7 +135,7 @@ Public Sub BuscarProductos(ByVal textoBusqueda As String, _
     Next fila
 End Sub
 
-' --- BUSCAR FACTURA POR CÃ“DIGO ---------------------------------------------
+' --- BUSCAR FACTURA POR CÓDIGO ---------------------------------------------
 
 Public Sub BuscarFacturaAvanzada()
     Dim codigoBuscar As String
@@ -144,7 +144,7 @@ Public Sub BuscarFacturaAvanzada()
     
     Set HojaBD = ThisWorkbook.Sheets(HOJA_FACTURAS)
     
-    codigoBuscar = Trim(InputBox("Ingrese el cÃ³digo de factura:", "Buscar Factura"))
+    codigoBuscar = Trim(InputBox("Ingrese el código de factura:", "Buscar Factura"))
     If codigoBuscar = "" Then Exit Sub
     
     Application.ScreenUpdating = False
@@ -188,10 +188,10 @@ ErrorHandler:
 End Function
 
 ' ============================================================================
-' FUNCIONES DE BÃšSQUEDA POR RANGO DE FECHAS (para Busqueda*.frm)
+' FUNCIONES DE BÚSQUEDA POR RANGO DE FECHAS (para Busqueda*.frm)
 ' ============================================================================
 
-' --- CARGAR DESCRIPCIONES ÃšNICAS EN UN COMBOBOX ----------------------------
+' --- CARGAR DESCRIPCIONES ÚNICAS EN UN COMBOBOX ----------------------------
 
 Public Sub CargarDescripcionesUnicas(ByRef tbl As ListObject, _
                                       ByVal columna As Long, _
@@ -220,8 +220,8 @@ Public Sub CargarDescripcionesUnicas(ByRef tbl As ListObject, _
 End Sub
 
 ' --- BUSCAR EN TABLA DE GASTOS ----------------------------------------------
-' Devuelve array 2D con: Fecha, CategorÃ­a, DescripciÃ³n, Monto
-' filasOriginales se llena con los nÃºmeros de fila reales.
+' Devuelve array 2D con: Fecha, Categoría, Descripción, Monto
+' filasOriginales se llena con los números de fila reales.
 
 Public Function BuscarGastos(ByVal fechaInicio As Date, _
                               ByVal fechaFin As Date, _
@@ -281,7 +281,7 @@ Public Function BuscarGastos(ByVal fechaInicio As Date, _
 End Function
 
 ' --- BUSCAR EN TABLA DE VENTAS ----------------------------------------------
-' Devuelve array 2D con: DescripciÃ³n, Fecha, Col4, Monto, Col6, FacturaID
+' Devuelve array 2D con: Descripción, Fecha, Col4, Monto, Col6, FacturaID
 
 Public Function BuscarVentas(ByVal fechaInicio As Date, _
                               ByVal fechaFin As Date, _
@@ -326,7 +326,7 @@ Public Function BuscarVentas(ByVal fechaInicio As Date, _
                      UCase(descripcion), vbTextCompare) = 0 Then cumple = False
         End If
         If cumple Then
-            resultados(i, 1) = fila.Range(2).Value       ' DescripciÃ³n
+            resultados(i, 1) = fila.Range(2).Value       ' Descripción
             resultados(i, 2) = Format(fila.Range(3).Value, "d-mmm-yyyy") ' Fecha
             resultados(i, 3) = fila.Range(4).Value       ' Col4
             resultados(i, 4) = "CUP      " & modFormateo.FormatearNumero(fila.Range(5).Value) ' Monto

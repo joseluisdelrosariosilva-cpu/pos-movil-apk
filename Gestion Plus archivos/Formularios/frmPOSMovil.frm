@@ -1,6 +1,6 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} frmPOSMovil 
-   Caption         =   "Control POS MÃ³vil"
+   Caption         =   "Control POS Móvil"
    ClientHeight    =   6360
    ClientLeft      =   120
    ClientTop       =   470
@@ -18,8 +18,8 @@ Option Explicit
 
 ' ============================================================================
 ' FORMULARIO: frmPOSMovil
-' PROPÃ“SITO:  Control del servidor POS MÃ³vil, timer de actualizaciÃ³n y
-'              desactivaciÃ³n. Delega la lÃ³gica en mÃ³dulos de 07_POS_Movil/.
+' PROPÓSITO:  Control del servidor POS Móvil, timer de actualización y
+'              desactivación. Delega la lógica en módulos de 07_POS_Movil/.
 ' ============================================================================
 
 Private proximaActualizacion As Date
@@ -67,8 +67,8 @@ Private Sub boton_desactivar_covered_Click()
     desactivando = True
     
     Dim respuesta As VbMsgBoxResult
-    respuesta = MsgBox("Â¿Desactivar POS MÃ³vil?" & vbCrLf & _
-                      "Se cerrarÃ¡ el servidor y se importarÃ¡n las ventas.", _
+    respuesta = MsgBox("¿Desactivar POS Móvil?" & vbCrLf & _
+                      "Se cerrará el servidor y se importarán las ventas.", _
                       vbQuestion + vbYesNo, "Confirmar")
     
     If respuesta = vbYes Then
@@ -87,14 +87,14 @@ Private Sub Labeldesactivar_Click()
 End Sub
 
 Private Sub btnImportar_Click()
-    MsgBox "FunciÃ³n de importaciÃ³n en desarrollo", vbInformation
+    MsgBox "Función de importación en desarrollo", vbInformation
 End Sub
 
 ' ============================================================================
-' INICIALIZACIÃ“N
+' INICIALIZACIÓN
 ' ============================================================================
 Private Sub UserForm_Initialize()
-    Me.Caption = "Control POS MÃ³vil"
+    Me.Caption = "Control POS Móvil"
     lblServidor.Caption = "Servidor: http://localhost:3000"
     
     If modServerControl.ServidorEstaActivo() Then
@@ -105,7 +105,7 @@ Private Sub UserForm_Initialize()
         lblEstado.ForeColor = &HFF&      ' Rojo
     End If
     
-    lblIP.Caption = "MÃ³vil: " & modServerControl.ObtenerIPLocal()
+    lblIP.Caption = "Móvil: " & modServerControl.ObtenerIPLocal()
     Call ActualizarVentasPendientes
     IniciarTimer
 End Sub
@@ -136,7 +136,7 @@ Sub ActualizarVentasPendientes()
 End Sub
 
 ' ============================================================================
-' TIMER DE ACTUALIZACIÃ“N (Application.OnTime)
+' TIMER DE ACTUALIZACIÓN (Application.OnTime)
 ' ============================================================================
 Public Sub ActualizarDatosFormulario()
     On Error GoTo ControlarError

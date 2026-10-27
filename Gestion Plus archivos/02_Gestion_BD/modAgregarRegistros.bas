@@ -1,8 +1,8 @@
 Attribute VB_Name = "modAgregarRegistros"
 ' ============================================================================
-' M脫DULO: modAgregarRegistros
-' PROP脫SITO: Consolidaci贸n de todas las funciones para agregar registros
-' a las tablas. Reemplaza las versiones duplicadas en M贸dulo1, serverControl,
+' M覦ULO: modAgregarRegistros
+' PROP覵ITO: Consolidaci髇 de todas las funciones para agregar registros
+' a las tablas. Reemplaza las versiones duplicadas en M骴ulo1, serverControl,
 ' facturacion, ingresar_form, Gasto_Form, Elaborar, etc.
 ' ============================================================================
 ' FUNCIONES INCLUIDAS:
@@ -18,7 +18,7 @@ Option Explicit
 
 ' --- AGREGAR GASTO ---------------------------------------------------------
 ' Crea un nuevo registro en la tabla de gastos.
-' Categor铆as t铆picas: "Fijo", "Variable", "Inversi贸n", "Merma"
+' Categor韆s t韕icas: "Fijo", "Variable", "Inversi髇", "Merma"
 
 Public Sub AgregarGasto( _
     fecha As Date, _
@@ -47,13 +47,13 @@ Public Sub AgregarGasto( _
     ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
 End Sub
 
-' --- AGREGAR GASTO DE INVERSI脫N (atalajo) ---------------------------------
+' --- AGREGAR GASTO DE INVERSI覰 (atalajo) ---------------------------------
 
 Public Sub AgregarGastoInversion(fecha As Date, descripcion As String, monto As Double)
     Call AgregarGasto(fecha, CAT_INVERSION, descripcion, monto)
 End Sub
 
-' --- AGREGAR FECHA 脷NICA ---------------------------------------------------
+' --- AGREGAR FECHA 贜ICA ---------------------------------------------------
 ' Agrega una fecha a la tabla FechasUnicas si no existe ya.
 
 Public Sub AgregarFecha(Optional fecha As Variant)
@@ -87,8 +87,8 @@ Public Sub AgregarFecha(Optional fecha As Variant)
     ws.Protect password:=PASS_HOJA, UserInterfaceOnly:=True
 End Sub
 
-' --- AGREGAR PRODUCTO 脷NICO ------------------------------------------------
-' Agrega un producto a la tabla de productos 煤nicos si no existe.
+' --- AGREGAR PRODUCTO 贜ICO ------------------------------------------------
+' Agrega un producto a la tabla de productos 鷑icos si no existe.
 
 Public Sub AgregarProductoUnico(nombreProducto As String)
     Dim ws As Worksheet
@@ -98,7 +98,7 @@ Public Sub AgregarProductoUnico(nombreProducto As String)
     Set ws = ThisWorkbook.Sheets(HOJA_FECHAS)
     Set tbl = ws.ListObjects(TBL_PRODUCTOS_UNICOS)
     
-    ' Verificar si ya existe (comparaci贸n sin distinguir may煤sculas)
+    ' Verificar si ya existe (comparaci髇 sin distinguir may鷖culas)
     For Each fila In tbl.ListRows
         If UCase(Trim(fila.Range(1))) = UCase(Trim(nombreProducto)) Then
             Exit Sub
@@ -219,7 +219,7 @@ Public Function InsertarDetalleVenta( _
     ws.Cells(filaInsercion, 7).Value = subtotal
     ws.Cells(filaInsercion, 8).Value = facturaID
     
-    ' Actualizar stock y registrar inversi贸n
+    ' Actualizar stock y registrar inversi髇
     Call RestarCantidadInventario(codigoProducto, cantidad)
     
     Dim montoInv As Double

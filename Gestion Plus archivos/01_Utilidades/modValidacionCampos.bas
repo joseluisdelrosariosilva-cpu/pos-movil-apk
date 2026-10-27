@@ -1,17 +1,17 @@
 Attribute VB_Name = "modValidacionCampos"
 ' ============================================================================
-' MÃ“DULO: modValidacionCampos
-' PROPÃ“SITO: Funciones de validaciÃ³n de campos vacÃ­os para todos los
-' formularios. Unifica los mÃ³dulos Validar_campos_vacios,
+' MÓDULO: modValidacionCampos
+' PROPÓSITO: Funciones de validación de campos vacíos para todos los
+' formularios. Unifica los módulos Validar_campos_vacios,
 ' Validar_vacios_2 y Validar_vacios_3.
 ' ============================================================================
-' NOTA: Las variables contador/contador2/contador3 estÃ¡n declaradas
+' NOTA: Las variables contador/contador2/contador3 están declaradas
 '       en modGlobales.
 ' ============================================================================
 
 Option Explicit
 
-' --- VALIDACIÃ“N: INGRESAR PRODUCTO (ingresar_form) -------------------------
+' --- VALIDACIÓN: INGRESAR PRODUCTO (ingresar_form) -------------------------
 
 Public Sub ValidarVaciosProducto(frm As ingresar_form)
     contador = 0
@@ -23,12 +23,12 @@ Public Sub ValidarVaciosProducto(frm As ingresar_form)
     If frm.precio_costo_TextBox.Value = "" Then contador = contador + 1
 End Sub
 
-' --- VALIDACIÃ“N: INGRESAR NUEVO INGREDIENTE (ingresar_ingr_nuevo_form) -----
+' --- VALIDACIÓN: INGRESAR NUEVO INGREDIENTE (ingresar_ingr_nuevo_form) -----
 
 Public Sub ValidarVaciosIngredienteNuevo(frm As ingresar_ingr_nuevo_form)
     contador2 = 0
     
-    ' Resaltar campos vacÃ­os con fondo amarillo
+    ' Resaltar campos vacíos con fondo amarillo
     If frm.Nombre_ingrediente_Nuevo_TextBox.Value = "" Then
         frm.Nombre_ingrediente_Nuevo_TextBox.BackStyle = fmBackStyleOpaque
         frm.Nombre_ingrediente_Nuevo_TextBox.BackColor = vbYellow
@@ -70,7 +70,7 @@ Public Sub ValidarVaciosIngredienteNuevo(frm As ingresar_ingr_nuevo_form)
     End If
 End Sub
 
-' --- VALIDACIÃ“N: INGRESAR INGREDIENTE EXISTENTE (ingresar_ingr_existente_form) --
+' --- VALIDACIÓN: INGRESAR INGREDIENTE EXISTENTE (ingresar_ingr_existente_form) --
 
 Public Sub ValidarVaciosIngredienteExistente(frm As ingresar_ingr_existente_form)
     contador3 = 0

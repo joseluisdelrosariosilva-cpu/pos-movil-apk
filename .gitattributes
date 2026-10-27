@@ -1,0 +1,15 @@
+# El editor de VBA exporta los modulos en ANSI (Windows-1252) con CRLF.
+# Ese es el encoding de referencia del repositorio: un archivo recien
+# exportado tiene que quedar identico byte a byte a lo que ya esta commiteado.
+#
+# Sin estas reglas, git normaliza saltos de linea y cada export del editor
+# aparece como si se hubiera reescrito el archivo entero.
+*.bas -text
+*.cls -text
+*.frm -text
+
+# Recursos binarios de los formularios y libros de Excel.
+*.frx  -text -diff
+*.xlsm -text -diff
+*.xls  -text -diff
+*.xlsb -text -diff
