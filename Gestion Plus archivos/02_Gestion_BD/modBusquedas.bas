@@ -191,34 +191,66 @@ End Function
 ' FUNCIONES DE BÚSQUEDA POR RANGO DE FECHAS (para Busqueda*.frm)
 ' ============================================================================
 
-' --- CARGAR DESCRIPCIONES ÚNICAS EN UN COMBOBOX ----------------------------
+' --- CARGAR DESCRIPCIONES UNICAS EN UN COMBOBOX ----------------------------
 
 Public Sub CargarDescripcionesUnicas(ByRef tbl As ListObject, _
                                       ByVal columna As Long, _
-                                      ByRef comboBox As MSForms.ComboBox)
+                                      ByRef comboBox As MSForms.comboBox)
     Dim dict As Object
     Dim fila As ListRow
     Dim valor As String
-    
+    Dim clave As String
+
     If comboBox Is Nothing Then Exit Sub
-    
+
     Set dict = CreateObject("Scripting.Dictionary")
-    
+
     comboBox.Clear
     comboBox.AddItem ""
-    
+
     For Each fila In tbl.ListRows
         valor = Trim(CStr(fila.Range(columna).Value))
-        If valor <> "" And Not dict.Exists(valor) Then
-            dict.Add valor, valor
-            comboBox.AddItem valor
+        clave = NormalizarDescripcion(valor)
+
+        If clave <> "" And Not dict.Exists(clave) Then
+            dict.Add clave, clave
+            comboBox.AddItem clave
         End If
     Next fila
-    
+
     If comboBox.ListCount > 0 Then comboBox.ListIndex = 0
     Set dict = Nothing
 End Sub
 
+' --- NORMALIZAR LA DESCRIPCION PARA EL COMBOBOX ----------------------------
+' Un producto aparece como "Refresco" cuando se vendio y como
+' "Refresco x 10" cuando se saco por merma. En el combo se muestran los dos
+' como "Refresco" para no repetir el mismo producto una vez por cantidad.
+' La busqueda es por coincidencia parcial, asi que elegir "Refresco"
+' devuelve todas sus filas, con y sin cantidad.
+
+Private Function NormalizarDescripcion(ByVal valor As String) As String
+    Dim texto As String
+    Dim pos As Long
+    Dim sufijo As String
+
+    texto = Trim$(valor)
+    pos = InStrRev(texto, " x ")
+
+    If pos = 0 Then
+        NormalizarDescripcion = texto
+        Exit Function
+    End If
+
+    sufijo = Trim$(Mid$(texto, pos + 3))
+
+    ' Solo recortar si lo que sigue al ultimo " x " es una cantidad.
+    If sufijo <> "" And IsNumeric(sufijo) Then
+        NormalizarDescripcion = Trim$(Left$(texto, pos - 1))
+    Else
+        NormalizarDescripcion = texto
+    End If
+End Function
 ' --- BUSCAR EN TABLA DE GASTOS ----------------------------------------------
 ' Devuelve array 2D con: Fecha, Categoría, Descripción, Monto
 ' filasOriginales se llena con los números de fila reales.
@@ -409,3 +441,4 @@ Public Sub NavegarAFilaOriginal(ByVal numFilaOriginal As Long, _
     Application.GoTo Reference:=ws.Cells(numFilaOriginal, 1), Scroll:=True
     ws.Rows(numFilaOriginal).Select
 End Sub
+
