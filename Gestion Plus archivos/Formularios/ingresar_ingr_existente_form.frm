@@ -27,7 +27,7 @@ Private Sub boton_ingresar_covered_Click()
     Call modValidacionCampos.ValidarVaciosIngredienteExistente(Me)
     
     If contador3 > 0 Then
-        MsgBox "Rellene los campos vacÃ­os", vbExclamation
+        MsgBox "Rellene los campos vacíos", vbExclamation
         Me.boton_ingresar_reposo.ZOrder msoBringToFront
         Me.Label27.ZOrder msoBringToFront
         Exit Sub
